@@ -84,6 +84,7 @@ def predict_pairs(
     model_path: Path,
     feature_columns_path: Path,
     metrics_path: Path,
+    threshold_override: float | None = None,
 ) -> pd.DataFrame:
     if pairs.empty:
         return pairs.assign(probability_same_article=pd.Series(dtype=float), prediction=pd.Series(dtype=int))
@@ -91,7 +92,7 @@ def predict_pairs(
     feature_columns = json.loads(Path(feature_columns_path).read_text(encoding="utf-8"))
     model = xgb.XGBClassifier()
     model.load_model(str(model_path))
-    threshold = load_threshold(metrics_path)
+    threshold = float(threshold_override) if threshold_override is not None else load_threshold(metrics_path)
     X = make_features(pairs, feature_columns)
     probabilities = model.predict_proba(X)[:, 1]
 
@@ -100,4 +101,3 @@ def predict_pairs(
     predictions["prediction"] = (probabilities >= threshold).astype(int)
     predictions["prediction_threshold"] = threshold
     return predictions
-

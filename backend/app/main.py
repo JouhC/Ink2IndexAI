@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
+import logging
 import shutil
 import uuid
 from datetime import datetime, timezone
@@ -29,17 +31,45 @@ CLASSIFIER_DIR = MODELS_DIR / "xgboost_ocr_model"
 CLASSIFIER_MODEL_PATH = CLASSIFIER_DIR / "pairwise_xgboost_ocr.json"
 FEATURE_COLUMNS_PATH = CLASSIFIER_DIR / "feature_columns.json"
 CLASSIFIER_METRICS_PATH = CLASSIFIER_DIR / "metrics.json"
+logger = logging.getLogger("uvicorn.error")
 
 STAGES = {
     "uploaded": 0,
-    "processing": 10,
+    "queued": 3,
+    "processing": 8,
+    "extract_pages": 12,
+    "load_cached_yolo": 24,
+    "detect_blocks": 24,
+    "candidate_pairs": 42,
+    "ocr_features": 58,
+    "pairwise_features": 68,
+    "pairwise_prediction": 78,
+    "clustering": 88,
+    "write_outputs": 96,
     "completed": 100,
     "failed": 100,
 }
 
+STAGE_LABELS = {
+    "uploaded": "Uploaded",
+    "queued": "Queued",
+    "processing": "Preparing pipeline",
+    "extract_pages": "Extracting page images",
+    "load_cached_yolo": "Loading cached YOLO detections",
+    "detect_blocks": "Detecting layout blocks",
+    "candidate_pairs": "Building candidate pairs",
+    "ocr_features": "Extracting OCR features",
+    "pairwise_features": "Computing pairwise features",
+    "pairwise_prediction": "Predicting same-article pairs",
+    "clustering": "Clustering articles",
+    "write_outputs": "Writing outputs",
+    "completed": "Completed",
+    "failed": "Failed",
+}
+
 app = FastAPI(
     title="Ink2Index API",
-    description="Upload newspaper TIFFs, run article separation, and retrieve visualization/export artifacts.",
+    description="Upload newspaper TIFF/PNG files, run article separation, and retrieve visualization/export artifacts.",
     version="0.1.0",
 )
 app.add_middleware(
@@ -59,7 +89,15 @@ class ProcessRequest(BaseModel):
     run_pairwise: bool = True
     run_grouping: bool = True
     model_version: str = "pairwise-v1"
-    run_ocr: bool = False
+    run_ocr: bool = True
+    clustering_method: str = Field(default="union_find", pattern="^(union_find|leiden)$")
+    leiden_resolution: float = Field(default=1.0, gt=0.0)
+    leiden_seed: int = 13
+    same_column_top_k: int = Field(default=3, ge=0)
+    adjacent_column_top_k: int = Field(default=2, ge=0)
+    cross_column_top_k: int = Field(default=1, ge=0)
+    pairwise_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    reuse_yolo_cache: bool = True
     yolo_confidence: float = Field(default=0.25, ge=0.0, le=1.0)
     yolo_image_size: int | None = Field(default=None, gt=0)
 
@@ -96,6 +134,14 @@ def write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
 
 
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def model_to_dict(model: BaseModel) -> dict[str, Any]:
     if hasattr(model, "model_dump"):
         return model.model_dump()
@@ -116,6 +162,7 @@ def update_job(job_id: str, **updates: Any) -> dict[str, Any]:
     job["updated_at"] = now_iso()
     stage = str(job.get("stage", "uploaded"))
     job["progress"] = int(job.get("progress", STAGES.get(stage, 0)))
+    job["stage_label"] = str(job.get("stage_label") or STAGE_LABELS.get(stage, stage.replace("_", " ").title()))
     write_json(job_path(job_id), job)
     return job
 
@@ -142,6 +189,25 @@ def safe_document_file(document_id: str, relative_path: str, not_found: str) -> 
 def read_csv_records(path: Path) -> list[dict[str, Any]]:
     with path.open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def find_yolo_cache(document_id: str, file_hash: str | None) -> tuple[str, Path] | None:
+    if not file_hash:
+        return None
+    for metadata_file in sorted(DOCUMENTS_DIR.glob("doc_*/metadata.json")):
+        cached_document_id = metadata_file.parent.name
+        if cached_document_id == document_id:
+            continue
+        try:
+            metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if metadata.get("file_sha256") != file_hash:
+            continue
+        blocks_path = metadata_file.parent / "outputs" / "blocks.csv"
+        if blocks_path.is_file():
+            return cached_document_id, blocks_path
+    return None
 
 
 def coerce_number(value: Any) -> Any:
@@ -185,8 +251,28 @@ def build_articles(document_id: str) -> list[dict[str, Any]]:
 
 def process_document(document_id: str, job_id: str, request: ProcessRequest) -> None:
     try:
+        logger.info("Processing started document_id=%s job_id=%s request=%s", document_id, job_id, model_to_dict(request))
         metadata = update_document(document_id, status="processing")
-        update_job(job_id, status="running", stage="processing", progress=STAGES["processing"], started_at=now_iso())
+        update_job(
+            job_id,
+            status="running",
+            stage="processing",
+            stage_label=STAGE_LABELS["processing"],
+            progress=STAGES["processing"],
+            message="Preparing pipeline inputs",
+            started_at=now_iso(),
+        )
+        yolo_cache = find_yolo_cache(document_id, metadata.get("file_sha256")) if request.reuse_yolo_cache else None
+        if yolo_cache:
+            cache_document_id, cached_blocks_path = yolo_cache
+            logger.info(
+                "Reusing YOLO detections document_id=%s cache_document_id=%s path=%s",
+                document_id,
+                cache_document_id,
+                cached_blocks_path,
+            )
+        else:
+            cache_document_id, cached_blocks_path = None, None
         config = PipelineConfig(
             input_tif=Path(metadata["file_path"]),
             output_dir=document_dir(document_id) / "outputs",
@@ -195,11 +281,38 @@ def process_document(document_id: str, job_id: str, request: ProcessRequest) -> 
             classifier_feature_columns_path=FEATURE_COLUMNS_PATH,
             classifier_metrics_path=CLASSIFIER_METRICS_PATH,
             newspaper_id=document_id,
+            cached_yolo_blocks_path=cached_blocks_path,
+            yolo_cache_document_id=cache_document_id,
             yolo_confidence=request.yolo_confidence,
             yolo_image_size=request.yolo_image_size,
+            same_column_top_k=request.same_column_top_k,
+            adjacent_column_top_k=request.adjacent_column_top_k,
+            cross_column_top_k=request.cross_column_top_k,
+            pairwise_threshold=request.pairwise_threshold,
             run_ocr=request.run_ocr,
+            clustering_method=request.clustering_method,
+            leiden_resolution=request.leiden_resolution,
+            leiden_seed=request.leiden_seed,
         )
-        manifest = run_pipeline(config)
+        def update_progress(stage: str, progress: int, message: str) -> None:
+            update_job(
+                job_id,
+                status="running",
+                stage=stage,
+                stage_label=STAGE_LABELS.get(stage, stage.replace("_", " ").title()),
+                progress=progress,
+                message=message,
+            )
+            logger.info(
+                "Processing progress document_id=%s job_id=%s stage=%s progress=%s message=%s",
+                document_id,
+                job_id,
+                stage,
+                progress,
+                message,
+            )
+
+        manifest = run_pipeline(config, progress_callback=update_progress)
         counts = manifest.get("counts", {})
         update_document(
             document_id,
@@ -207,18 +320,32 @@ def process_document(document_id: str, job_id: str, request: ProcessRequest) -> 
             page_count=counts.get("pages", 0),
             article_count=counts.get("clusters", 0),
             model_version=request.model_version,
+            yolo_cache_document_id=cache_document_id,
             manifest_path=manifest.get("paths", {}).get("manifest_json"),
         )
         update_job(
             job_id,
             status="completed",
             stage="completed",
+            stage_label=STAGE_LABELS["completed"],
             progress=STAGES["completed"],
+            message="Processing complete",
             completed_at=now_iso(),
         )
+        logger.info("Processing completed document_id=%s job_id=%s counts=%s", document_id, job_id, counts)
     except Exception as exc:  # The background task must persist failures for the client.
+        logger.exception("Processing failed document_id=%s job_id=%s", document_id, job_id)
         update_document(document_id, status="failed", error=str(exc))
-        update_job(job_id, status="failed", stage="failed", progress=STAGES["failed"], error=str(exc), completed_at=now_iso())
+        update_job(
+            job_id,
+            status="failed",
+            stage="failed",
+            stage_label=STAGE_LABELS["failed"],
+            progress=STAGES["failed"],
+            message="Processing failed",
+            error=str(exc),
+            completed_at=now_iso(),
+        )
 
 
 @app.on_event("startup")
@@ -238,9 +365,16 @@ def upload_document(
     publication_date: str | None = Form(default=None),
 ) -> dict[str, Any]:
     ensure_data_dirs()
+    logger.info(
+        "Upload received filename=%s content_type=%s source_name=%s publication_date=%s",
+        file.filename,
+        file.content_type,
+        source_name,
+        publication_date,
+    )
     suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in {".tif", ".tiff"}:
-        raise HTTPException(status_code=400, detail="Only .tif and .tiff files are supported")
+    if suffix not in {".tif", ".tiff", ".png"}:
+        raise HTTPException(status_code=400, detail="Only .tif, .tiff, and .png files are supported")
 
     document_id = f"doc_{uuid.uuid4().hex[:12]}"
     doc_dir = document_dir(document_id)
@@ -248,10 +382,14 @@ def upload_document(
     original_path = doc_dir / f"original{suffix}"
     with original_path.open("wb") as handle:
         shutil.copyfileobj(file.file, handle)
+    file_size_bytes = original_path.stat().st_size
+    file_hash = file_sha256(original_path)
 
     metadata = {
         "document_id": document_id,
         "filename": file.filename,
+        "file_size_bytes": file_size_bytes,
+        "file_sha256": file_hash,
         "source_name": source_name,
         "publication_date": publication_date,
         "status": "uploaded",
@@ -263,10 +401,12 @@ def upload_document(
         "updated_at": now_iso(),
     }
     write_json(metadata_path(document_id), metadata)
+    logger.info("Upload saved document_id=%s path=%s sha256=%s", document_id, original_path, file_hash)
     return {
         "document_id": document_id,
         "status": metadata["status"],
         "file_uri": metadata["file_uri"],
+        "file_sha256": file_hash,
     }
 
 
@@ -274,14 +414,17 @@ def upload_document(
 def start_processing(document_id: str, request: ProcessRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
     require_document(document_id)
     job_id = f"job_{uuid.uuid4().hex[:12]}"
+    logger.info("Processing queued document_id=%s job_id=%s request=%s", document_id, job_id, model_to_dict(request))
     write_json(
         job_path(job_id),
         {
             "job_id": job_id,
             "document_id": document_id,
             "status": "queued",
-            "stage": "uploaded",
-            "progress": STAGES["uploaded"],
+            "stage": "queued",
+            "stage_label": STAGE_LABELS["queued"],
+            "progress": STAGES["queued"],
+            "message": "Waiting for background worker",
             "request": model_to_dict(request),
             "created_at": now_iso(),
             "updated_at": now_iso(),

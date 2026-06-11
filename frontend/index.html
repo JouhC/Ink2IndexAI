@@ -406,6 +406,16 @@
         opacity: 0.18;
       }
 
+      .box.debug-selected {
+        box-shadow: 0 0 0 2px #ffffff, 0 0 0 5px #111827;
+        z-index: 4;
+      }
+
+      .box.debug-candidate {
+        box-shadow: 0 0 0 2px #ffffff;
+        z-index: 3;
+      }
+
       .box-label {
         background: #e7533f;
         color: #fff;
@@ -550,7 +560,7 @@
           <h2>Upload</h2>
           <label>
             TIFF file
-            <input id="fileInput" type="file" accept=".tif,.tiff,image/tiff" />
+            <input id="fileInput" type="file" accept=".tif,.tiff,.png,image/tiff,image/png" />
           </label>
           <div class="grid two">
             <label>
@@ -574,7 +584,8 @@
             <label class="toggle"><span>YOLO layout detection</span><input id="runYolo" type="checkbox" checked /></label>
             <label class="toggle"><span>Pairwise model</span><input id="runPairwise" type="checkbox" checked /></label>
             <label class="toggle"><span>Article grouping</span><input id="runGrouping" type="checkbox" checked /></label>
-            <label class="toggle"><span>OCR features</span><input id="runOcr" type="checkbox" /></label>
+            <label class="toggle"><span>OCR features</span><input id="runOcr" type="checkbox" checked /></label>
+            <label class="toggle"><span>Reuse YOLO cache</span><input id="reuseYoloCache" type="checkbox" checked /></label>
           </div>
           <label>
             YOLO confidence <span id="confidenceValue">0.25</span>
@@ -586,8 +597,35 @@
               <input id="imageSizeInput" type="number" min="1" placeholder="auto" />
             </label>
             <label>
+              Same-column K
+              <input id="sameColumnTopKInput" type="number" min="0" step="1" value="3" />
+            </label>
+            <label>
+              Adjacent-column K
+              <input id="adjacentColumnTopKInput" type="number" min="0" step="1" value="2" />
+            </label>
+            <label>
+              Cross-column K
+              <input id="crossColumnTopKInput" type="number" min="0" step="1" value="1" />
+            </label>
+            <label>
               Model version
               <input id="modelVersionInput" value="pairwise-v1" />
+            </label>
+            <label>
+              Pairwise threshold
+              <input id="pairwiseThresholdInput" type="number" min="0" max="1" step="0.01" placeholder="model default" />
+            </label>
+            <label>
+              Clustering
+              <select id="clusteringMethodInput">
+                <option value="union_find">Union find</option>
+                <option value="leiden">Leiden</option>
+              </select>
+            </label>
+            <label>
+              Leiden resolution
+              <input id="leidenResolutionInput" type="number" min="0.01" step="0.1" value="1.0" />
             </label>
           </div>
           <button id="processBtn" class="primary" disabled>Start processing</button>
@@ -600,7 +638,7 @@
         <div class="topbar">
           <div>
             <h2 id="documentTitle">No document selected</h2>
-            <p id="documentMeta" class="subtle">Upload a TIFF or paste an existing document ID.</p>
+            <p id="documentMeta" class="subtle">Upload a TIFF/PNG or paste an existing document ID.</p>
           </div>
           <div class="api-control">
             <label>
@@ -623,6 +661,7 @@
         <nav class="tabs" aria-label="Document views">
           <button class="tab active" data-tab="overview">Overview</button>
           <button class="tab" data-tab="visualization">Visualization</button>
+          <button class="tab" data-tab="candidate-debug">Candidate Debug</button>
           <button class="tab" data-tab="detections">Detections</button>
           <button class="tab" data-tab="articles">Articles</button>
           <button class="tab" data-tab="pairs">Pairs</button>
@@ -652,6 +691,7 @@
         },
         selectedPageId: "",
         selectedArticleId: "",
+        selectedDetectionId: "",
       };
 
       const $ = (id) => document.getElementById(id);
@@ -673,7 +713,9 @@
       }
 
       async function request(path, options = {}) {
-        const response = await fetch(apiUrl(path), options);
+        const url = apiUrl(path);
+        console.info("Ink2Index request", { method: options.method || "GET", url });
+        const response = await fetch(url, options);
         if (!response.ok) {
           let detail = `${response.status} ${response.statusText}`;
           try {
@@ -682,8 +724,10 @@
           } catch (_error) {
             // Keep the HTTP status text.
           }
+          console.error("Ink2Index request failed", { method: options.method || "GET", url, detail });
           throw new Error(detail);
         }
+        console.info("Ink2Index response", { method: options.method || "GET", url, status: response.status });
         return response.json();
       }
 
@@ -711,9 +755,12 @@
 
       function statusProgress(job) {
         const progress = Number(job?.progress || 0);
-        $("progressFill").style.width = `${Math.max(0, Math.min(progress, 100))}%`;
+        const boundedProgress = Math.max(0, Math.min(progress, 100));
+        const stage = job?.stage_label || job?.stage || job?.status || "Idle";
+        const message = job?.message && job.message !== stage ? ` · ${job.message}` : "";
+        $("progressFill").style.width = `${boundedProgress}%`;
         $("jobLine").textContent = job
-          ? `${job.job_id} · ${job.stage || job.status} · ${progress}%`
+          ? `${job.job_id} · ${stage}${message} · ${boundedProgress}%`
           : "No job started.";
         setJobBadge(job?.status || "Idle");
       }
@@ -759,7 +806,7 @@
         clearNotice();
         const file = $("fileInput").files[0];
         if (!file) {
-          setNotice("No backend request was sent. Choose a .tif or .tiff file first.", "error");
+          setNotice("No backend request was sent. Choose a .tif, .tiff, or .png file first.", "error");
           return;
         }
         const formData = new FormData();
@@ -770,9 +817,16 @@
         $("uploadBtn").disabled = true;
         $("uploadBtn").textContent = "Uploading...";
         setNotice(`Uploading ${file.name} to ${apiUrl("/documents")}.`, "info");
-        console.info("Ink2Index upload", { apiBase: state.apiBase, endpoint: apiUrl("/documents"), file: file.name });
+        console.info("Ink2Index upload started", {
+          apiBase: state.apiBase,
+          endpoint: apiUrl("/documents"),
+          file: file.name,
+          size: file.size,
+          type: file.type,
+        });
         try {
           const payload = await request("/documents", { method: "POST", body: formData });
+          console.info("Ink2Index upload completed", payload);
           state.documentId = payload.document_id;
           state.selectedPageId = "";
           state.activeTab = "overview";
@@ -782,6 +836,7 @@
           setNotice(`Upload complete for ${payload.document_id}. Click Start processing when you are ready.`, "info");
           await refreshDocumentData();
         } catch (error) {
+          console.error("Ink2Index upload failed", error);
           setNotice(error.message, "error");
         } finally {
           $("uploadBtn").disabled = false;
@@ -791,12 +846,20 @@
 
       function processPayload() {
         const imageSize = $("imageSizeInput").value.trim();
+        const pairwiseThreshold = $("pairwiseThresholdInput").value.trim();
         return {
           run_yolo: $("runYolo").checked,
           run_pairwise: $("runPairwise").checked,
           run_grouping: $("runGrouping").checked,
           model_version: $("modelVersionInput").value.trim() || "pairwise-v1",
-          run_ocr: $("runOcr").checked,
+          run_ocr: true,
+          reuse_yolo_cache: $("reuseYoloCache").checked,
+          clustering_method: $("clusteringMethodInput").value,
+          leiden_resolution: Number($("leidenResolutionInput").value) || 1.0,
+          same_column_top_k: Number($("sameColumnTopKInput").value),
+          adjacent_column_top_k: Number($("adjacentColumnTopKInput").value),
+          cross_column_top_k: Number($("crossColumnTopKInput").value),
+          pairwise_threshold: pairwiseThreshold === "" ? null : Number(pairwiseThreshold),
           yolo_confidence: Number($("confidenceInput").value),
           yolo_image_size: imageSize ? Number(imageSize) : null,
         };
@@ -807,11 +870,13 @@
         if (!state.documentId) return;
         $("processBtn").disabled = true;
         try {
+          console.info("Ink2Index processing started", { documentId: state.documentId, payload: processPayload() });
           const payload = await request(`/documents/${state.documentId}/process`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(processPayload()),
           });
+          console.info("Ink2Index processing queued", payload);
           state.jobId = payload.job_id;
           setJobBadge(payload.status);
           pollJob();
@@ -1002,6 +1067,145 @@
         });
       }
 
+      function pairwiseLookup() {
+        return new Map(state.data.pairwiseResults.map((item) => [item.pair_id, item]));
+      }
+
+      function candidateRowsForDetection(detectionId) {
+        const pairwiseById = pairwiseLookup();
+        return state.data.candidatePairs
+          .filter((pair) => pair.source_detection_id === detectionId || pair.target_detection_id === detectionId)
+          .map((pair) => {
+            const candidateId = pair.source_detection_id === detectionId ? pair.target_detection_id : pair.source_detection_id;
+            const pairwise = pairwiseById.get(pair.pair_id) || {};
+            return {
+              ...pair,
+              candidate_id: candidateId,
+              prediction: pairwise.prediction,
+              probability: pairwise.probability,
+            };
+          })
+          .sort((a, b) => Number(b.probability ?? -1) - Number(a.probability ?? -1));
+      }
+
+      function renderCandidateDebug() {
+        const pages = state.data.pages;
+        if (!pages.length) {
+          renderEmpty("Run processing to inspect candidate blocks.");
+          return;
+        }
+        const selectedPage = pages.find((page) => page.page_id === state.selectedPageId) || pages[0];
+        state.selectedPageId = selectedPage.page_id;
+        const detections = state.data.detections.filter((item) => item.page_id === selectedPage.page_id);
+        if (!state.selectedDetectionId || !detections.some((item) => item.detection_id === state.selectedDetectionId)) {
+          state.selectedDetectionId = detections[0]?.detection_id || "";
+        }
+        const selectedDetection = detections.find((item) => item.detection_id === state.selectedDetectionId);
+        const { byDetection } = articleLookup();
+        const rows = selectedDetection ? candidateRowsForDetection(selectedDetection.detection_id) : [];
+        const candidateIds = new Set(rows.map((row) => row.candidate_id));
+        const pageUrl = apiUrl(`/${selectedPage.image_uri}`);
+        const selectedArticleId = byDetection.get(selectedDetection?.detection_id)?.article_id || "—";
+
+        content.innerHTML = `
+          <div class="viewer">
+            <section class="page-stage">
+              <div class="page-canvas" id="pageCanvas">
+                <img id="pageImage" src="${pageUrl}" alt="Page ${selectedPage.page_number}" />
+              </div>
+            </section>
+            <aside class="grid">
+              <section class="panel flat">
+                <h2>Pages</h2>
+                <div class="actions">
+                  ${pages
+                    .map((page) => `<button data-debug-page="${page.page_id}" class="${page.page_id === selectedPage.page_id ? "primary" : ""}">Page ${page.page_number}</button>`)
+                    .join("")}
+                </div>
+              </section>
+              <section class="panel flat">
+                <div class="status-line">
+                  <h2>Selected Block</h2>
+                  <span class="badge">${rows.length} candidates</span>
+                </div>
+                ${selectedDetection ? detailRows([
+                  ["Detection", selectedDetection.detection_id],
+                  ["Label", selectedDetection.label],
+                  ["Article", selectedArticleId],
+                  ["Confidence", selectedDetection.confidence],
+                ]) : '<p class="subtle">No detections on this page.</p>'}
+              </section>
+              <section class="panel flat">
+                <h2>Candidates</h2>
+                <div class="list">
+                  ${rows
+                    .map((row) => {
+                      const detection = state.data.detections.find((item) => item.detection_id === row.candidate_id);
+                      const articleId = byDetection.get(row.candidate_id)?.article_id || "—";
+                      const source = row.features?.candidate_sources || "—";
+                      const probability = row.probability == null ? "—" : Number(row.probability).toFixed(4);
+                      const prediction = row.prediction == null ? "—" : row.prediction ? "same" : "different";
+                      return `<button class="item" data-debug-detection="${escapeHtml(row.candidate_id)}">
+                        <span class="article-card-head">
+                          <strong>${escapeHtml(detection?.label || "Candidate")}</strong>
+                          <span class="badge">${prediction}</span>
+                        </span>
+                        <span class="mono subtle">${escapeHtml(row.candidate_id)}</span>
+                        <span class="subtle">Article ${escapeHtml(articleId)} · p=${escapeHtml(probability)} · ${escapeHtml(source)}</span>
+                      </button>`;
+                    })
+                    .join("") || '<p class="subtle">No candidate pairs for this block.</p>'}
+                </div>
+              </section>
+            </aside>
+          </div>`;
+
+        const image = $("pageImage");
+        image.addEventListener("load", () => drawCandidateDebugBoxes(image, detections, selectedDetection?.detection_id || "", candidateIds, byDetection));
+        if (image.complete) drawCandidateDebugBoxes(image, detections, selectedDetection?.detection_id || "", candidateIds, byDetection);
+        document.querySelectorAll("[data-debug-page]").forEach((button) => {
+          button.addEventListener("click", () => {
+            state.selectedPageId = button.dataset.debugPage;
+            state.selectedDetectionId = "";
+            renderCandidateDebug();
+          });
+        });
+        document.querySelectorAll("[data-debug-detection]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const detection = state.data.detections.find((item) => item.detection_id === button.dataset.debugDetection);
+            state.selectedPageId = detection?.page_id || state.selectedPageId;
+            state.selectedDetectionId = button.dataset.debugDetection;
+            renderCandidateDebug();
+          });
+        });
+      }
+
+      function drawCandidateDebugBoxes(image, detections, selectedDetectionId, candidateIds, articleByDetection) {
+        const canvas = $("pageCanvas");
+        canvas.querySelectorAll(".box").forEach((box) => box.remove());
+        const scaleX = image.clientWidth / image.naturalWidth;
+        const scaleY = image.clientHeight / image.naturalHeight;
+        detections.forEach((detection) => {
+          const selected = detection.detection_id === selectedDetectionId;
+          const candidate = candidateIds.has(detection.detection_id);
+          const article = articleByDetection.get(detection.detection_id);
+          const color = selected ? "#111827" : candidate ? "#d97706" : article ? articleColor(article.article_id) : "#94a3b8";
+          const box = document.createElement("div");
+          box.className = `box ${article ? "article" : ""} ${selected ? "debug-selected" : ""} ${candidate ? "debug-candidate" : ""} ${!selected && !candidate ? "dimmed" : ""}`;
+          box.style.left = `${detection.bbox.x * scaleX}px`;
+          box.style.top = `${detection.bbox.y * scaleY}px`;
+          box.style.width = `${detection.bbox.w * scaleX}px`;
+          box.style.height = `${detection.bbox.h * scaleY}px`;
+          box.style.borderColor = color;
+          box.innerHTML = `<span class="box-label" style="background:${color}">${selected ? "Selected" : candidate ? "Candidate" : article ? `Article ${escapeHtml(article.article_id)}` : escapeHtml(detection.label)}</span>`;
+          box.addEventListener("click", () => {
+            state.selectedDetectionId = detection.detection_id;
+            renderCandidateDebug();
+          });
+          canvas.appendChild(box);
+        });
+      }
+
       function renderDetections() {
         renderTable(
           state.data.detections,
@@ -1115,6 +1319,7 @@
         });
         if (state.activeTab === "overview") renderOverview();
         if (state.activeTab === "visualization") renderVisualization();
+        if (state.activeTab === "candidate-debug") renderCandidateDebug();
         if (state.activeTab === "detections") renderDetections();
         if (state.activeTab === "articles") renderArticles();
         if (state.activeTab === "pairs") renderPairs();

@@ -19,9 +19,18 @@ class PipelineConfig:
         "new_datasets/pre-processed/pairwise_classification/xgboost_ocr_model/metrics.json"
     )
     newspaper_id: str | None = None
+    cached_yolo_blocks_path: Path | None = None
+    yolo_cache_document_id: str | None = None
     yolo_confidence: float = 0.25
     yolo_image_size: int | None = None
-    run_ocr: bool = False
+    same_column_top_k: int = 3
+    adjacent_column_top_k: int = 2
+    cross_column_top_k: int = 1
+    pairwise_threshold: float | None = None
+    run_ocr: bool = True
+    clustering_method: str = "union_find"
+    leiden_resolution: float = 1.0
+    leiden_seed: int = 13
     tesseract_lang: str = "eng"
     tesseract_psm: str = "6"
 
@@ -35,10 +44,18 @@ class PipelineConfig:
             classifier_feature_columns_path=Path(args.feature_columns),
             classifier_metrics_path=Path(args.classifier_metrics),
             newspaper_id=args.newspaper_id,
+            cached_yolo_blocks_path=Path(args.cached_yolo_blocks) if args.cached_yolo_blocks else None,
+            yolo_cache_document_id=args.yolo_cache_document_id,
             yolo_confidence=args.yolo_confidence,
             yolo_image_size=args.yolo_image_size,
+            same_column_top_k=args.same_column_top_k,
+            adjacent_column_top_k=args.adjacent_column_top_k,
+            cross_column_top_k=args.cross_column_top_k,
+            pairwise_threshold=args.pairwise_threshold,
             run_ocr=args.run_ocr,
+            clustering_method=args.clustering_method,
+            leiden_resolution=args.leiden_resolution,
+            leiden_seed=args.leiden_seed,
             tesseract_lang=args.tesseract_lang,
             tesseract_psm=args.tesseract_psm,
         )
-

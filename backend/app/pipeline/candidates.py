@@ -8,13 +8,11 @@ import numpy as np
 import pandas as pd
 
 TEXTISH_CLASSES = {"Text", "List-item", "Caption", "Footnote"}
-K_NEAREST_SPATIAL = 8
-READING_WINDOW = 5
-GLOBAL_READING_WINDOW = 3
-SAME_COLUMN_WINDOW = 6
-ADJACENT_COLUMN_MAX_PER_BLOCK = 4
-MAX_ADJACENT_COLUMN_Y_DISTANCE = 0.14
-MIN_ADJACENT_COLUMN_Y_OVERLAP = 0.08
+HEADLINE_CLASSES = {"Section-header", "Title"}
+MAX_CANDIDATE_VERTICAL_GAP_PX = 450.0
+DEFAULT_SAME_COLUMN_TOP_K = 3
+DEFAULT_ADJACENT_COLUMN_TOP_K = 2
+DEFAULT_CROSS_COLUMN_TOP_K = 1
 
 
 def stable_hash_int(value: str) -> int:
@@ -158,49 +156,52 @@ def add_pair(pair_sources, page_df: pd.DataFrame, i, j, source: str) -> None:
     pair_sources[(a, b)].add(source)
 
 
-def build_page_candidate_pairs(page: pd.DataFrame):
+def candidate_sort_key(block: pd.Series, other: pd.Series, column_delta: int, vertical_gap_px: float):
+    center_distance = math.hypot(float(other.center_x - block.center_x), float(other.center_y - block.center_y))
+    return (vertical_gap_px, column_delta, center_distance, str(other.block_id))
+
+
+def is_cross_column_headline_continuation_candidate(block: pd.Series, other: pd.Series) -> bool:
+    classes = {str(block.class_name), str(other.class_name)}
+    return bool(classes & HEADLINE_CLASSES) or classes.issubset(TEXTISH_CLASSES)
+
+
+def build_page_candidate_pairs(
+    page: pd.DataFrame,
+    same_column_top_k: int = DEFAULT_SAME_COLUMN_TOP_K,
+    adjacent_column_top_k: int = DEFAULT_ADJACENT_COLUMN_TOP_K,
+    cross_column_top_k: int = DEFAULT_CROSS_COLUMN_TOP_K,
+):
     pair_sources = defaultdict(set)
-    page_width = float(page["page_width"].iloc[0])
-    page_height = float(page["page_height"].iloc[0])
-    diag = math.hypot(page_width, page_height)
-    indices = list(page.index)
-
-    centers = page[["center_x", "center_y"]].to_numpy(float)
-    if len(page) > 1:
-        dists = np.sqrt(((centers[:, None, :] - centers[None, :, :]) ** 2).sum(axis=2)) / max(diag, 1.0)
-        for row_pos, idx in enumerate(indices):
-            for neighbor_pos in np.argsort(dists[row_pos])[1 : K_NEAREST_SPATIAL + 1]:
-                add_pair(pair_sources, page, idx, indices[neighbor_pos], "spatial_knn")
-
-    for sort_cols, window, source in [
-        (["column_id", "y1", "x1", "block_id"], READING_WINDOW, "reading_order"),
-        (["y1", "x1", "block_id"], GLOBAL_READING_WINDOW, "global_reading_order"),
-    ]:
-        ordered = list(page.sort_values(sort_cols).index)
-        for pos, idx in enumerate(ordered):
-            for neighbor in ordered[pos + 1 : pos + 1 + window]:
-                add_pair(pair_sources, page, idx, neighbor, source)
-
-    for _, col_page in page.groupby("column_id", sort=True):
-        ordered = list(col_page.sort_values(["y1", "x1", "block_id"]).index)
-        for pos, idx in enumerate(ordered):
-            for neighbor in ordered[pos + 1 : pos + 1 + SAME_COLUMN_WINDOW]:
-                add_pair(pair_sources, page, idx, neighbor, "same_column_window")
-
-    for col in sorted(page["column_id"].dropna().unique()):
-        left_col = page[page["column_id"].eq(col)]
-        right_col = page[page["column_id"].eq(col + 1)]
-        if right_col.empty:
-            continue
-        for idx, block in left_col.iterrows():
-            candidates = []
-            for jdx, other in right_col.iterrows():
-                y_overlap = interval_overlap_ratio(block.y1, block.y2, other.y1, other.y2)
-                y_distance = abs(block.center_y - other.center_y) / max(page_height, 1.0)
-                if y_overlap >= MIN_ADJACENT_COLUMN_Y_OVERLAP or y_distance <= MAX_ADJACENT_COLUMN_Y_DISTANCE:
-                    candidates.append((y_distance, -y_overlap, jdx))
-            for _, _, jdx in sorted(candidates)[:ADJACENT_COLUMN_MAX_PER_BLOCK]:
-                add_pair(pair_sources, page, idx, jdx, "adjacent_column")
+    ordered = list(page.sort_values(["column_id", "y1", "x1", "block_id"]).index)
+    top_k_by_bucket = {
+        "same_column_window": max(int(same_column_top_k), 0),
+        "adjacent_column": max(int(adjacent_column_top_k), 0),
+        "cross_column_headline_continuation": max(int(cross_column_top_k), 0),
+    }
+    for idx in ordered:
+        block = page.loc[idx]
+        candidates_by_bucket = defaultdict(list)
+        for jdx in ordered:
+            if idx == jdx:
+                continue
+            other = page.loc[jdx]
+            column_delta = abs(int(other.column_id - block.column_id))
+            vertical_gap_px = gap_between(block.y1, block.y2, other.y1, other.y2)
+            if vertical_gap_px > MAX_CANDIDATE_VERTICAL_GAP_PX:
+                continue
+            if column_delta == 0:
+                source = "same_column_window"
+            elif column_delta == 1:
+                source = "adjacent_column"
+            elif is_cross_column_headline_continuation_candidate(block, other):
+                source = "cross_column_headline_continuation"
+            else:
+                continue
+            candidates_by_bucket[source].append((candidate_sort_key(block, other, column_delta, vertical_gap_px), jdx))
+        for source, candidates in candidates_by_bucket.items():
+            for _, jdx in sorted(candidates)[: top_k_by_bucket[source]]:
+                add_pair(pair_sources, page, idx, jdx, source)
     return pair_sources
 
 
@@ -281,12 +282,21 @@ def pair_feature_record(page: pd.DataFrame, left_idx, right_idx, sources: set[st
     }
 
 
-def build_candidate_pairs(blocks: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def build_candidate_pairs(
+    blocks: pd.DataFrame,
+    same_column_top_k: int = DEFAULT_SAME_COLUMN_TOP_K,
+    adjacent_column_top_k: int = DEFAULT_ADJACENT_COLUMN_TOP_K,
+    cross_column_top_k: int = DEFAULT_CROSS_COLUMN_TOP_K,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     blocks = prepare_blocks(blocks)
     blocks_layout, columns = add_layout(blocks)
     records = []
     for _, page in blocks_layout.groupby("page_key", sort=False):
-        for (left_idx, right_idx), sources in build_page_candidate_pairs(page).items():
+        for (left_idx, right_idx), sources in build_page_candidate_pairs(
+            page,
+            same_column_top_k=same_column_top_k,
+            adjacent_column_top_k=adjacent_column_top_k,
+            cross_column_top_k=cross_column_top_k,
+        ).items():
             records.append(pair_feature_record(page, left_idx, right_idx, sources))
     return blocks_layout.reset_index(drop=True), columns, pd.DataFrame(records)
-
