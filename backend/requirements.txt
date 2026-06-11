@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pillow
+pandas
+numpy
+xgboost
+ultralytics
+scikit-learn
+httpx

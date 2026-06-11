@@ -1,0 +1,7 @@
+*models/
+*data/
+*.tif
+*.tiff
+*.pt
+*.pth
+*.onnx

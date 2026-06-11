@@ -1,0 +1,1168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ink2Index Console</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f7f4;
+        --panel: #ffffff;
+        --panel-soft: #eef3ed;
+        --ink: #19211d;
+        --muted: #69746c;
+        --line: #d8dfd8;
+        --accent: #136f63;
+        --accent-strong: #0b544b;
+        --warn: #a5541a;
+        --danger: #a43b3b;
+        --shadow: 0 12px 32px rgba(31, 46, 39, 0.09);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+        color: var(--ink);
+        cursor: pointer;
+        min-height: 38px;
+        padding: 0 12px;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+
+      button.primary:hover:not(:disabled) {
+        background: var(--accent-strong);
+      }
+
+      label {
+        color: var(--muted);
+        display: grid;
+        font-size: 0.78rem;
+        font-weight: 650;
+        gap: 6px;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      input,
+      select {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--ink);
+        min-height: 38px;
+        padding: 8px 10px;
+        width: 100%;
+      }
+
+      input[type="checkbox"] {
+        min-height: auto;
+        width: auto;
+      }
+
+      input[type="range"] {
+        padding: 0;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: minmax(310px, 390px) minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        background: #fbfcfa;
+        border-right: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        padding: 22px;
+      }
+
+      .brand {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+      }
+
+      .mark {
+        align-items: center;
+        background: var(--accent);
+        border-radius: 8px;
+        color: #fff;
+        display: grid;
+        font-weight: 800;
+        height: 42px;
+        place-items: center;
+        width: 42px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 1.15rem;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        font-size: 1rem;
+      }
+
+      h3 {
+        font-size: 0.94rem;
+      }
+
+      .subtle {
+        color: var(--muted);
+        font-size: 0.9rem;
+        line-height: 1.45;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        display: grid;
+        gap: 14px;
+        padding: 16px;
+      }
+
+      .panel.flat {
+        box-shadow: none;
+      }
+
+      .grid {
+        display: grid;
+        gap: 12px;
+      }
+
+      .two {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .toggle-row {
+        display: grid;
+        gap: 8px;
+      }
+
+      .toggle {
+        align-items: center;
+        background: var(--panel-soft);
+        border: 1px solid transparent;
+        border-radius: 6px;
+        display: flex;
+        justify-content: space-between;
+        min-height: 42px;
+        padding: 9px 10px;
+      }
+
+      .toggle span {
+        font-size: 0.9rem;
+        font-weight: 650;
+        text-transform: none;
+      }
+
+      .progress-track {
+        background: #dde6de;
+        border-radius: 999px;
+        height: 10px;
+        overflow: hidden;
+      }
+
+      .progress-fill {
+        background: var(--accent);
+        height: 100%;
+        transition: width 180ms ease;
+        width: 0%;
+      }
+
+      .status-line {
+        align-items: center;
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
+      }
+
+      .badge {
+        background: var(--panel-soft);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--muted);
+        display: inline-flex;
+        font-size: 0.78rem;
+        font-weight: 750;
+        min-height: 24px;
+        padding: 3px 9px;
+        text-transform: uppercase;
+      }
+
+      .badge.ok {
+        background: #e7f4ed;
+        border-color: #b9dbc9;
+        color: #1e6843;
+      }
+
+      .badge.warn {
+        background: #fff1df;
+        border-color: #f0d1a9;
+        color: var(--warn);
+      }
+
+      .badge.error {
+        background: #fae8e8;
+        border-color: #e6bbbb;
+        color: var(--danger);
+      }
+
+      main {
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        min-width: 0;
+        padding: 22px;
+      }
+
+      .topbar {
+        align-items: center;
+        display: flex;
+        gap: 14px;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+
+      .api-control {
+        align-items: end;
+        display: grid;
+        gap: 8px;
+        grid-template-columns: minmax(220px, 380px) auto;
+      }
+
+      .stats {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-bottom: 16px;
+      }
+
+      .stat {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: grid;
+        gap: 5px;
+        padding: 14px;
+      }
+
+      .stat strong {
+        font-size: 1.35rem;
+      }
+
+      .tabs {
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        gap: 6px;
+        margin-bottom: 16px;
+        overflow-x: auto;
+      }
+
+      .tab {
+        background: transparent;
+        border: 0;
+        border-bottom: 3px solid transparent;
+        border-radius: 0;
+        color: var(--muted);
+        min-width: max-content;
+      }
+
+      .tab.active {
+        border-bottom-color: var(--accent);
+        color: var(--ink);
+        font-weight: 750;
+      }
+
+      .content {
+        min-width: 0;
+      }
+
+      .empty {
+        align-content: center;
+        border: 1px dashed #c6d0c8;
+        border-radius: 8px;
+        color: var(--muted);
+        display: grid;
+        min-height: 360px;
+        padding: 30px;
+        place-items: center;
+        text-align: center;
+      }
+
+      .table-wrap {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: auto;
+      }
+
+      table {
+        border-collapse: collapse;
+        font-size: 0.88rem;
+        min-width: 680px;
+        width: 100%;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--line);
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: #f0f4ef;
+        color: #435049;
+        font-size: 0.76rem;
+        text-transform: uppercase;
+      }
+
+      td.mono,
+      .mono {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 0.84rem;
+      }
+
+      .viewer {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.8fr);
+      }
+
+      .page-stage {
+        background: #e8ede8;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        min-height: 520px;
+        overflow: auto;
+        padding: 14px;
+      }
+
+      .page-canvas {
+        display: inline-block;
+        position: relative;
+      }
+
+      .page-canvas img {
+        display: block;
+        max-height: 76vh;
+        max-width: 100%;
+      }
+
+      .box {
+        border: 2px solid #e7533f;
+        opacity: 0.92;
+        position: absolute;
+      }
+
+      .box.article {
+        border-color: #1370a8;
+      }
+
+      .box.dimmed {
+        opacity: 0.18;
+      }
+
+      .box-label {
+        background: #e7533f;
+        color: #fff;
+        font-size: 10px;
+        left: -2px;
+        max-width: 180px;
+        overflow: hidden;
+        padding: 2px 4px;
+        position: absolute;
+        text-overflow: ellipsis;
+        top: -20px;
+        white-space: nowrap;
+      }
+
+      .article .box-label {
+        background: #1370a8;
+      }
+
+      .list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .item {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        text-align: left;
+      }
+
+      .item.selected {
+        border-color: var(--accent);
+        box-shadow: inset 3px 0 0 var(--accent);
+      }
+
+      .article-card-head {
+        align-items: center;
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
+      }
+
+      .article-name {
+        align-items: center;
+        display: inline-flex;
+        gap: 8px;
+      }
+
+      .swatch {
+        border: 1px solid rgba(0, 0, 0, 0.14);
+        border-radius: 999px;
+        display: inline-block;
+        flex: 0 0 auto;
+        height: 12px;
+        width: 12px;
+      }
+
+      .mini-button {
+        min-height: 30px;
+        padding: 0 9px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .notice {
+        border-radius: 6px;
+        display: none;
+        font-size: 0.9rem;
+        line-height: 1.4;
+        padding: 10px 12px;
+      }
+
+      .notice.show {
+        display: block;
+      }
+
+      .notice.error {
+        background: #fae8e8;
+        color: var(--danger);
+      }
+
+      .notice.info {
+        background: #e7f4ed;
+        color: #1e6843;
+      }
+
+      @media (max-width: 1000px) {
+        .shell,
+        .viewer {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          border-bottom: 1px solid var(--line);
+          border-right: 0;
+        }
+
+        .stats {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 640px) {
+        main,
+        .sidebar {
+          padding: 14px;
+        }
+
+        .topbar,
+        .status-line {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .api-control,
+        .two,
+        .stats {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="mark">I2</div>
+          <div>
+            <h1>Ink2Index Console</h1>
+            <p class="subtle">Document upload, processing, review, and export.</p>
+          </div>
+        </div>
+
+        <section class="panel flat">
+          <h2>Upload</h2>
+          <label>
+            TIFF file
+            <input id="fileInput" type="file" accept=".tif,.tiff,image/tiff" />
+          </label>
+          <div class="grid two">
+            <label>
+              Source
+              <input id="sourceInput" placeholder="Newspaper title" />
+            </label>
+            <label>
+              Publication date
+              <input id="dateInput" type="date" />
+            </label>
+          </div>
+          <button id="uploadBtn" class="primary">Upload document</button>
+        </section>
+
+        <section class="panel flat">
+          <div class="status-line">
+            <h2>Processing</h2>
+            <span id="jobBadge" class="badge">Idle</span>
+          </div>
+          <div class="toggle-row">
+            <label class="toggle"><span>YOLO layout detection</span><input id="runYolo" type="checkbox" checked /></label>
+            <label class="toggle"><span>Pairwise model</span><input id="runPairwise" type="checkbox" checked /></label>
+            <label class="toggle"><span>Article grouping</span><input id="runGrouping" type="checkbox" checked /></label>
+            <label class="toggle"><span>OCR features</span><input id="runOcr" type="checkbox" /></label>
+          </div>
+          <label>
+            YOLO confidence <span id="confidenceValue">0.25</span>
+            <input id="confidenceInput" type="range" min="0" max="1" step="0.01" value="0.25" />
+          </label>
+          <div class="grid two">
+            <label>
+              Image size
+              <input id="imageSizeInput" type="number" min="1" placeholder="auto" />
+            </label>
+            <label>
+              Model version
+              <input id="modelVersionInput" value="pairwise-v1" />
+            </label>
+          </div>
+          <button id="processBtn" class="primary" disabled>Start processing</button>
+          <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
+          <p id="jobLine" class="subtle mono">No job started.</p>
+        </section>
+      </aside>
+
+      <main>
+        <div class="topbar">
+          <div>
+            <h2 id="documentTitle">No document selected</h2>
+            <p id="documentMeta" class="subtle">Upload a TIFF or paste an existing document ID.</p>
+          </div>
+          <div class="api-control">
+            <label>
+              API base
+              <input id="apiBaseInput" value="http://127.0.0.1:8000" />
+            </label>
+            <button id="healthBtn">Check</button>
+          </div>
+        </div>
+
+        <section class="stats">
+          <div class="stat"><span class="subtle">Pages</span><strong id="pagesStat">0</strong></div>
+          <div class="stat"><span class="subtle">Detections</span><strong id="detectionsStat">0</strong></div>
+          <div class="stat"><span class="subtle">Articles</span><strong id="articlesStat">0</strong></div>
+          <div class="stat"><span class="subtle">Pairs</span><strong id="pairsStat">0</strong></div>
+        </section>
+
+        <div id="notice" class="notice"></div>
+
+        <nav class="tabs" aria-label="Document views">
+          <button class="tab active" data-tab="overview">Overview</button>
+          <button class="tab" data-tab="visualization">Visualization</button>
+          <button class="tab" data-tab="detections">Detections</button>
+          <button class="tab" data-tab="articles">Articles</button>
+          <button class="tab" data-tab="pairs">Pairs</button>
+          <button class="tab" data-tab="export">Export</button>
+        </nav>
+
+        <section id="content" class="content"></section>
+      </main>
+    </div>
+
+    <script>
+      const state = {
+        apiBase: "http://127.0.0.1:8000",
+        documentId: "",
+        jobId: "",
+        activeTab: "overview",
+        pollTimer: null,
+        data: {
+          document: null,
+          pages: [],
+          detections: [],
+          articles: [],
+          candidatePairs: [],
+          pairwiseResults: [],
+          metrics: null,
+          visualization: null,
+        },
+        selectedPageId: "",
+        selectedArticleId: "",
+      };
+
+      const $ = (id) => document.getElementById(id);
+      const content = $("content");
+      const notice = $("notice");
+
+      function apiUrl(path) {
+        return `${state.apiBase.replace(/\/$/, "")}${path}`;
+      }
+
+      function setNotice(message, type = "info") {
+        notice.textContent = message;
+        notice.className = `notice ${type} show`;
+      }
+
+      function clearNotice() {
+        notice.textContent = "";
+        notice.className = "notice";
+      }
+
+      async function request(path, options = {}) {
+        const response = await fetch(apiUrl(path), options);
+        if (!response.ok) {
+          let detail = `${response.status} ${response.statusText}`;
+          try {
+            const payload = await response.json();
+            detail = payload.detail || detail;
+          } catch (_error) {
+            // Keep the HTTP status text.
+          }
+          throw new Error(detail);
+        }
+        return response.json();
+      }
+
+      function setJobBadge(status) {
+        const badge = $("jobBadge");
+        badge.textContent = status || "Idle";
+        badge.className = "badge";
+        if (status === "completed") badge.classList.add("ok");
+        if (status === "failed") badge.classList.add("error");
+        if (status === "running" || status === "queued") badge.classList.add("warn");
+      }
+
+      function updateHeader() {
+        const doc = state.data.document;
+        $("documentTitle").textContent = state.documentId || "No document selected";
+        $("documentMeta").textContent = doc
+          ? `${doc.filename || "Document"} · ${doc.status || "unknown"} · ${doc.source_name || "No source"}`
+          : "Upload a TIFF or paste an existing document ID.";
+        $("processBtn").disabled = !state.documentId;
+        $("pagesStat").textContent = state.data.pages.length;
+        $("detectionsStat").textContent = state.data.detections.length;
+        $("articlesStat").textContent = state.data.articles.length;
+        $("pairsStat").textContent = state.data.candidatePairs.length || state.data.pairwiseResults.length;
+      }
+
+      function statusProgress(job) {
+        const progress = Number(job?.progress || 0);
+        $("progressFill").style.width = `${Math.max(0, Math.min(progress, 100))}%`;
+        $("jobLine").textContent = job
+          ? `${job.job_id} · ${job.stage || job.status} · ${progress}%`
+          : "No job started.";
+        setJobBadge(job?.status || "Idle");
+      }
+
+      async function refreshDocumentData() {
+        if (!state.documentId) {
+          updateHeader();
+          render();
+          return;
+        }
+
+        const loaders = [
+          ["document", `/documents/${state.documentId}`],
+          ["pages", `/documents/${state.documentId}/pages`],
+          ["detections", `/documents/${state.documentId}/detections`],
+          ["articles", `/documents/${state.documentId}/articles`],
+          ["candidatePairs", `/documents/${state.documentId}/candidate-pairs`],
+          ["pairwiseResults", `/documents/${state.documentId}/pairwise-results`],
+          ["metrics", `/documents/${state.documentId}/metrics`],
+          ["visualization", `/documents/${state.documentId}/visualization`],
+        ];
+
+        const results = await Promise.allSettled(loaders.map(([, path]) => request(path)));
+        results.forEach((result, index) => {
+          const key = loaders[index][0];
+          if (result.status === "fulfilled") {
+            state.data[key] = result.value;
+          } else if (Array.isArray(state.data[key])) {
+            state.data[key] = [];
+          } else {
+            state.data[key] = null;
+          }
+        });
+
+        if (!state.selectedPageId && state.data.pages[0]) {
+          state.selectedPageId = state.data.pages[0].page_id;
+        }
+        updateHeader();
+        render();
+      }
+
+      async function uploadDocument() {
+        clearNotice();
+        const file = $("fileInput").files[0];
+        if (!file) {
+          setNotice("No backend request was sent. Choose a .tif or .tiff file first.", "error");
+          return;
+        }
+        const formData = new FormData();
+        formData.append("file", file);
+        if ($("sourceInput").value.trim()) formData.append("source_name", $("sourceInput").value.trim());
+        if ($("dateInput").value) formData.append("publication_date", $("dateInput").value);
+
+        $("uploadBtn").disabled = true;
+        $("uploadBtn").textContent = "Uploading...";
+        setNotice(`Uploading ${file.name} to ${apiUrl("/documents")}.`, "info");
+        console.info("Ink2Index upload", { apiBase: state.apiBase, endpoint: apiUrl("/documents"), file: file.name });
+        try {
+          const payload = await request("/documents", { method: "POST", body: formData });
+          state.documentId = payload.document_id;
+          state.selectedPageId = "";
+          state.activeTab = "overview";
+          $("progressFill").style.width = "0%";
+          $("jobLine").textContent = `${payload.document_id} uploaded. Ready to start processing.`;
+          setJobBadge("uploaded");
+          setNotice(`Upload complete for ${payload.document_id}. Click Start processing when you are ready.`, "info");
+          await refreshDocumentData();
+        } catch (error) {
+          setNotice(error.message, "error");
+        } finally {
+          $("uploadBtn").disabled = false;
+          $("uploadBtn").textContent = "Upload document";
+        }
+      }
+
+      function processPayload() {
+        const imageSize = $("imageSizeInput").value.trim();
+        return {
+          run_yolo: $("runYolo").checked,
+          run_pairwise: $("runPairwise").checked,
+          run_grouping: $("runGrouping").checked,
+          model_version: $("modelVersionInput").value.trim() || "pairwise-v1",
+          run_ocr: $("runOcr").checked,
+          yolo_confidence: Number($("confidenceInput").value),
+          yolo_image_size: imageSize ? Number(imageSize) : null,
+        };
+      }
+
+      async function startProcessing() {
+        clearNotice();
+        if (!state.documentId) return;
+        $("processBtn").disabled = true;
+        try {
+          const payload = await request(`/documents/${state.documentId}/process`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(processPayload()),
+          });
+          state.jobId = payload.job_id;
+          setJobBadge(payload.status);
+          pollJob();
+        } catch (error) {
+          setNotice(error.message, "error");
+          $("processBtn").disabled = false;
+        }
+      }
+
+      async function pollJob() {
+        if (!state.jobId) return;
+        window.clearTimeout(state.pollTimer);
+        try {
+          const job = await request(`/jobs/${state.jobId}`);
+          statusProgress(job);
+          if (job.status === "completed") {
+            $("processBtn").disabled = false;
+            setNotice("Processing complete.", "info");
+            await refreshDocumentData();
+            return;
+          }
+          if (job.status === "failed") {
+            $("processBtn").disabled = false;
+            setNotice(job.error || "Processing failed.", "error");
+            await refreshDocumentData();
+            return;
+          }
+          state.pollTimer = window.setTimeout(pollJob, 1500);
+        } catch (error) {
+          $("processBtn").disabled = false;
+          setNotice(error.message, "error");
+        }
+      }
+
+      function renderEmpty(message = "No processed document data is available yet.") {
+        content.innerHTML = `<div class="empty"><p>${message}</p></div>`;
+      }
+
+      function renderOverview() {
+        const doc = state.data.document;
+        if (!doc) {
+          renderEmpty();
+          return;
+        }
+        const metrics = state.data.metrics || {};
+        content.innerHTML = `
+          <div class="grid two">
+            <section class="panel flat">
+              <h2>Document</h2>
+              ${detailRows([
+                ["Document ID", doc.document_id],
+                ["Filename", doc.filename],
+                ["Status", doc.status],
+                ["Source", doc.source_name || "—"],
+                ["Publication date", doc.publication_date || "—"],
+                ["Created", formatDate(doc.created_at)],
+                ["Updated", formatDate(doc.updated_at)],
+              ])}
+            </section>
+            <section class="panel flat">
+              <h2>Metrics</h2>
+              ${detailRows([
+                ["Candidate pairs", metrics.candidate_pairs ?? "—"],
+                ["Positive pairs", metrics.positive_pairs ?? "—"],
+                ["Negative pairs", metrics.negative_pairs ?? "—"],
+                ["Articles found", metrics.articles_found ?? "—"],
+                ["Processing seconds", metrics.processing_time_seconds ?? "—"],
+              ])}
+            </section>
+          </div>`;
+      }
+
+      function detailRows(rows) {
+        return `<div class="table-wrap"><table><tbody>${rows
+          .map(([key, value]) => `<tr><th>${escapeHtml(key)}</th><td class="mono">${escapeHtml(String(value ?? "—"))}</td></tr>`)
+          .join("")}</tbody></table></div>`;
+      }
+
+      function articleColor(articleId) {
+        const palette = ["#1370a8", "#c4562b", "#5d7f2f", "#8b4d9f", "#b78314", "#297a71", "#b33f64", "#5765b6"];
+        const text = String(articleId ?? "");
+        const index = [...text].reduce((sum, char) => sum + char.charCodeAt(0), 0) % palette.length;
+        return palette[index];
+      }
+
+      function articleLookup() {
+        const byDetection = new Map();
+        const byId = new Map();
+        state.data.articles.forEach((article) => {
+          byId.set(article.article_id, article);
+          article.detection_ids.forEach((detectionId) => byDetection.set(detectionId, article));
+        });
+        return { byDetection, byId };
+      }
+
+      function renderVisualization() {
+        const pages = state.data.pages;
+        if (!pages.length) {
+          renderEmpty("Run processing to review page images and layout assignments.");
+          return;
+        }
+        const selectedPage = pages.find((page) => page.page_id === state.selectedPageId) || pages[0];
+        state.selectedPageId = selectedPage.page_id;
+        const detections = state.data.detections.filter((item) => item.page_id === selectedPage.page_id);
+        const selectedArticle = state.data.articles.find((item) => item.article_id === state.selectedArticleId);
+        const selectedIds = new Set(selectedArticle?.detection_ids || []);
+        const { byDetection } = articleLookup();
+        const pageArticleIds = new Set(detections.map((detection) => byDetection.get(detection.detection_id)?.article_id).filter(Boolean));
+        const pageArticles = state.data.articles.filter((article) => pageArticleIds.has(article.article_id));
+        const pageUrl = apiUrl(`/${selectedPage.image_uri}`);
+        content.innerHTML = `
+          <div class="viewer">
+            <section class="page-stage">
+              <div class="page-canvas" id="pageCanvas">
+                <img id="pageImage" src="${pageUrl}" alt="Page ${selectedPage.page_number}" />
+              </div>
+            </section>
+            <aside class="grid">
+              <section class="panel flat">
+                <h2>Pages</h2>
+                <div class="actions">
+                  ${pages
+                    .map(
+                      (page) =>
+                        `<button data-page="${page.page_id}" class="${page.page_id === selectedPage.page_id ? "primary" : ""}">Page ${page.page_number}</button>`,
+                    )
+                    .join("")}
+                </div>
+              </section>
+              <section class="panel flat">
+                <div class="status-line">
+                  <h2>Article Map</h2>
+                  <span class="badge">${pageArticles.length} on page</span>
+                </div>
+                <div class="list">
+                  ${pageArticles
+                    .map(
+                      (article) => `<button class="item ${article.article_id === state.selectedArticleId ? "selected" : ""}" data-article="${article.article_id}">
+                        <span class="article-card-head">
+                          <strong class="article-name"><span class="swatch" style="background:${articleColor(article.article_id)}"></span>Article ${escapeHtml(article.article_id)}</strong>
+                          <span class="badge">${article.confidence}</span>
+                        </span>
+                        <span class="subtle">${article.detection_ids.filter((id) => detections.some((detection) => detection.detection_id === id)).length} blocks on this page · ${article.detection_ids.length} total</span>
+                      </button>`,
+                    )
+                    .join("") || '<p class="subtle">No article assignments on this page yet.</p>'}
+                </div>
+              </section>
+            </aside>
+          </div>`;
+
+        const image = $("pageImage");
+        image.addEventListener("load", () => drawBoxes(image, detections, selectedIds, byDetection));
+        if (image.complete) drawBoxes(image, detections, selectedIds, byDetection);
+        document.querySelectorAll("[data-page]").forEach((button) => {
+          button.addEventListener("click", () => {
+            state.selectedPageId = button.dataset.page;
+            renderVisualization();
+          });
+        });
+        document.querySelectorAll("[data-article]").forEach((button) => {
+          button.addEventListener("click", () => {
+            state.selectedArticleId = state.selectedArticleId === button.dataset.article ? "" : button.dataset.article;
+            renderVisualization();
+          });
+        });
+      }
+
+      function drawBoxes(image, detections, selectedIds, articleByDetection) {
+        const canvas = $("pageCanvas");
+        canvas.querySelectorAll(".box").forEach((box) => box.remove());
+        const scaleX = image.clientWidth / image.naturalWidth;
+        const scaleY = image.clientHeight / image.naturalHeight;
+        detections.forEach((detection) => {
+          const box = document.createElement("div");
+          const article = articleByDetection.get(detection.detection_id);
+          const selected = selectedIds.has(detection.detection_id);
+          const hasSelection = selectedIds.size > 0;
+          const color = article ? articleColor(article.article_id) : "#e7533f";
+          box.className = `box ${article ? "article" : ""} ${hasSelection && !selected ? "dimmed" : ""}`;
+          box.style.left = `${detection.bbox.x * scaleX}px`;
+          box.style.top = `${detection.bbox.y * scaleY}px`;
+          box.style.width = `${detection.bbox.w * scaleX}px`;
+          box.style.height = `${detection.bbox.h * scaleY}px`;
+          box.style.borderColor = color;
+          box.innerHTML = `<span class="box-label" style="background:${color}">${article ? `Article ${escapeHtml(article.article_id)}` : escapeHtml(detection.label)}</span>`;
+          canvas.appendChild(box);
+        });
+      }
+
+      function renderDetections() {
+        renderTable(
+          state.data.detections,
+          ["detection_id", "page_id", "label", "confidence", "bbox"],
+          (row) => ({ ...row, bbox: JSON.stringify(row.bbox) }),
+          "No detections are available yet.",
+        );
+      }
+
+      function renderArticles() {
+        const articles = state.data.articles;
+        if (!articles.length) {
+          renderEmpty("No article assignments are available yet.");
+          return;
+        }
+        content.innerHTML = `
+          <div class="list">
+            ${articles
+              .map(
+                (article) => `<article class="item ${article.article_id === state.selectedArticleId ? "selected" : ""}">
+                  <div class="article-card-head">
+                    <h3 class="article-name"><span class="swatch" style="background:${articleColor(article.article_id)}"></span>Article ${escapeHtml(article.article_id)}</h3>
+                    <button class="mini-button" data-view-article="${escapeHtml(article.article_id)}">View</button>
+                  </div>
+                  <p class="subtle">${article.detection_ids.length} blocks · ${article.page_ids.length} pages · confidence ${article.confidence}</p>
+                  <p class="mono subtle">${escapeHtml(article.page_ids.join(", "))}</p>
+                </article>`,
+              )
+              .join("")}
+          </div>`;
+        document.querySelectorAll("[data-view-article]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const article = state.data.articles.find((item) => item.article_id === button.dataset.viewArticle);
+            state.selectedArticleId = button.dataset.viewArticle || "";
+            state.selectedPageId = article?.page_ids[0] || state.selectedPageId;
+            state.activeTab = "visualization";
+            render();
+          });
+        });
+      }
+
+      function renderPairs() {
+        const pairwiseById = new Map(state.data.pairwiseResults.map((item) => [item.pair_id, item]));
+        const rows = state.data.candidatePairs.map((pair) => ({
+          pair_id: pair.pair_id,
+          source: pair.source_detection_id,
+          target: pair.target_detection_id,
+          prediction: pairwiseById.get(pair.pair_id)?.prediction ?? "—",
+          probability: pairwiseById.get(pair.pair_id)?.probability ?? "—",
+        }));
+        renderTable(rows, ["pair_id", "source", "target", "prediction", "probability"], (row) => row, "No pair data is available yet.");
+      }
+
+      function renderExport() {
+        if (!state.documentId) {
+          renderEmpty("Upload or select a document before exporting.");
+          return;
+        }
+        content.innerHTML = `
+          <section class="panel flat">
+            <h2>Export Articles</h2>
+            <div class="api-control">
+              <label>
+                Format
+                <select id="exportFormat">
+                  <option value="json">JSON</option>
+                  <option value="csv">CSV</option>
+                  <option value="xml">XML</option>
+                </select>
+              </label>
+              <button id="exportBtn" class="primary">Create export</button>
+            </div>
+            <p id="exportResult" class="subtle mono"></p>
+          </section>`;
+        $("exportBtn").addEventListener("click", async () => {
+          try {
+            const payload = await request(`/documents/${state.documentId}/export?format=${$("exportFormat").value}`);
+            const url = apiUrl(payload.download_url);
+            $("exportResult").innerHTML = `<a href="${url}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a>`;
+          } catch (error) {
+            setNotice(error.message, "error");
+          }
+        });
+      }
+
+      function renderTable(rows, columns, normalize, emptyMessage) {
+        if (!rows.length) {
+          renderEmpty(emptyMessage);
+          return;
+        }
+        const normalized = rows.map(normalize);
+        content.innerHTML = `
+          <div class="table-wrap">
+            <table>
+              <thead><tr>${columns.map((column) => `<th>${escapeHtml(column.replaceAll("_", " "))}</th>`).join("")}</tr></thead>
+              <tbody>
+                ${normalized
+                  .map(
+                    (row) =>
+                      `<tr>${columns.map((column) => `<td class="mono">${escapeHtml(String(row[column] ?? "—"))}</td>`).join("")}</tr>`,
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>`;
+      }
+
+      function render() {
+        document.querySelectorAll(".tab").forEach((tab) => {
+          tab.classList.toggle("active", tab.dataset.tab === state.activeTab);
+        });
+        if (state.activeTab === "overview") renderOverview();
+        if (state.activeTab === "visualization") renderVisualization();
+        if (state.activeTab === "detections") renderDetections();
+        if (state.activeTab === "articles") renderArticles();
+        if (state.activeTab === "pairs") renderPairs();
+        if (state.activeTab === "export") renderExport();
+      }
+
+      function formatDate(value) {
+        if (!value) return "—";
+        const date = new Date(value);
+        return Number.isNaN(date.valueOf()) ? value : date.toLocaleString();
+      }
+
+      function escapeHtml(value) {
+        return value
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      $("apiBaseInput").addEventListener("change", () => {
+        state.apiBase = $("apiBaseInput").value.trim() || "http://127.0.0.1:8000";
+      });
+      $("healthBtn").addEventListener("click", async () => {
+        state.apiBase = $("apiBaseInput").value.trim() || state.apiBase;
+        try {
+          const payload = await request("/health");
+          setNotice(`API health: ${payload.status}`, "info");
+        } catch (error) {
+          setNotice(error.message, "error");
+        }
+      });
+      $("uploadBtn").addEventListener("click", uploadDocument);
+      $("processBtn").addEventListener("click", startProcessing);
+      $("confidenceInput").addEventListener("input", () => {
+        $("confidenceValue").textContent = Number($("confidenceInput").value).toFixed(2);
+      });
+      document.querySelectorAll(".tab").forEach((tab) => {
+        tab.addEventListener("click", () => {
+          state.activeTab = tab.dataset.tab;
+          render();
+        });
+      });
+
+      updateHeader();
+      statusProgress(null);
+      render();
+    </script>
+  </body>
+</html>
