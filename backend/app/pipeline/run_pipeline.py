@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 from pathlib import Path
 from typing import Callable
 
@@ -63,6 +64,9 @@ def run_pipeline(config: PipelineConfig, progress_callback: ProgressCallback | N
             confidence=config.yolo_confidence,
             image_size=config.yolo_image_size,
         )
+    del pages
+    gc.collect()
+
     progress("candidate_pairs", 42, "Building candidate block pairs")
     blocks, columns, pairs = build_candidate_pairs(
         blocks,
@@ -81,6 +85,9 @@ def run_pipeline(config: PipelineConfig, progress_callback: ProgressCallback | N
     )
     progress("pairwise_features", 68, "Computing pairwise OCR features")
     pair_ocr_features = compute_pairwise_ocr_features(pairs, block_ocr)
+    del block_ocr
+    gc.collect()
+
     pairs_with_ocr = pairs.merge(pair_ocr_features, on="pair_id", how="left")
     for column in ["ocr_cosine_similarity", "text_similarity", "entity_overlap", "shared_keywords"]:
         pairs_with_ocr[column] = pairs_with_ocr[column].fillna(0.0)
@@ -93,6 +100,9 @@ def run_pipeline(config: PipelineConfig, progress_callback: ProgressCallback | N
         config.classifier_metrics_path,
         threshold_override=config.pairwise_threshold,
     )
+    del pairs_with_ocr
+    gc.collect()
+
     progress("clustering", 88, "Clustering blocks into articles")
     clusters = cluster_blocks(
         blocks,

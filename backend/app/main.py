@@ -4,7 +4,9 @@ import csv
 import hashlib
 import json
 import logging
+import subprocess
 import shutil
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -348,6 +350,39 @@ def process_document(document_id: str, job_id: str, request: ProcessRequest) -> 
         )
 
 
+def launch_process_document(document_id: str, job_id: str, request_payload: dict[str, Any]) -> None:
+    log_path = JOBS_DIR / f"{job_id}.log"
+    try:
+        with log_path.open("ab") as log_file:
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "app.pipeline_worker",
+                    document_id,
+                    job_id,
+                    json.dumps(request_payload),
+                ],
+                cwd=str(BASE_DIR.parent),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                close_fds=True,
+            )
+    except Exception as exc:
+        logger.exception("Failed to launch pipeline worker document_id=%s job_id=%s", document_id, job_id)
+        update_document(document_id, status="failed", error=str(exc))
+        update_job(
+            job_id,
+            status="failed",
+            stage="failed",
+            stage_label=STAGE_LABELS["failed"],
+            progress=STAGES["failed"],
+            message="Failed to launch processing worker",
+            error=str(exc),
+            completed_at=now_iso(),
+        )
+
+
 @app.on_event("startup")
 def startup() -> None:
     ensure_data_dirs()
@@ -414,7 +449,8 @@ def upload_document(
 def start_processing(document_id: str, request: ProcessRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
     require_document(document_id)
     job_id = f"job_{uuid.uuid4().hex[:12]}"
-    logger.info("Processing queued document_id=%s job_id=%s request=%s", document_id, job_id, model_to_dict(request))
+    request_payload = model_to_dict(request)
+    logger.info("Processing queued document_id=%s job_id=%s request=%s", document_id, job_id, request_payload)
     write_json(
         job_path(job_id),
         {
@@ -425,12 +461,12 @@ def start_processing(document_id: str, request: ProcessRequest, background_tasks
             "stage_label": STAGE_LABELS["queued"],
             "progress": STAGES["queued"],
             "message": "Waiting for background worker",
-            "request": model_to_dict(request),
+            "request": request_payload,
             "created_at": now_iso(),
             "updated_at": now_iso(),
         },
     )
-    background_tasks.add_task(process_document, document_id, job_id, request)
+    background_tasks.add_task(launch_process_document, document_id, job_id, request_payload)
     return {"job_id": job_id, "document_id": document_id, "status": "queued"}
 
 
