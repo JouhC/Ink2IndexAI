@@ -15,6 +15,13 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 TEXTISH_CLASSES = {"Text", "Section-header", "Caption", "List-item", "Footnote", "Title"}
+PAIRWISE_OCR_FEATURE_COLUMNS = [
+    "pair_id",
+    "ocr_cosine_similarity",
+    "text_similarity",
+    "entity_overlap",
+    "shared_keywords",
+]
 STOPWORDS = {
     "the",
     "and",
@@ -166,6 +173,9 @@ def build_block_ocr(
 
 
 def compute_pairwise_ocr_features(pairs: pd.DataFrame, block_ocr: pd.DataFrame) -> pd.DataFrame:
+    if pairs.empty:
+        return pd.DataFrame(columns=PAIRWISE_OCR_FEATURE_COLUMNS)
+
     block_ocr = block_ocr.drop_duplicates("block_id").copy()
     text_by_block_id = dict(zip(block_ocr["block_id"], block_ocr["ocr_text"].fillna("").astype(str)))
     row_by_block_id = {block_id: i for i, block_id in enumerate(block_ocr["block_id"])}
@@ -198,4 +208,4 @@ def compute_pairwise_ocr_features(pairs: pd.DataFrame, block_ocr: pd.DataFrame) 
                 "shared_keywords": int(len(keywords_by_block_id.get(row.left_block_id, set()) & keywords_by_block_id.get(row.right_block_id, set()))),
             }
         )
-    return pd.DataFrame(records)
+    return pd.DataFrame(records, columns=PAIRWISE_OCR_FEATURE_COLUMNS)

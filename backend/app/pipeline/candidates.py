@@ -13,6 +13,75 @@ MAX_CANDIDATE_VERTICAL_GAP_PX = 450.0
 DEFAULT_SAME_COLUMN_TOP_K = 3
 DEFAULT_ADJACENT_COLUMN_TOP_K = 2
 DEFAULT_CROSS_COLUMN_TOP_K = 1
+COLUMN_MERGE_GAP_PAGE_WIDTH_RATIO = 0.012
+COLUMN_MERGE_GAP_MEDIAN_WIDTH_RATIO = 0.08
+COLUMN_MERGE_GAP_MAX_PAGE_WIDTH_RATIO = 0.018
+SAME_COLUMN_MIN_X_OVERLAP_RATIO = 0.30
+SAME_COLUMN_MAX_CENTER_DX_MEDIAN_WIDTH_RATIO = 0.40
+VISUAL_ADJACENT_MAX_HORIZONTAL_GAP_MEDIAN_WIDTH_RATIO = 0.35
+ADJACENT_SAME_LANE_MIN_X_OVERLAP_RATIO = 0.80
+ADJACENT_SAME_LANE_MAX_CENTER_DX_MEDIAN_WIDTH_RATIO = 0.15
+HEADLINE_BOUNDARY_MIN_X_OVERLAP_RATIO = 0.30
+SECTION_HEADER_BOUNDARY_MIN_HEIGHT_PAGE_RATIO = 0.018
+SECTION_HEADER_BOUNDARY_MIN_WIDE_HEIGHT_PAGE_RATIO = 0.012
+SECTION_HEADER_BOUNDARY_MIN_WIDTH_PAGE_RATIO = 0.20
+CANDIDATE_PAIR_COLUMNS = [
+    "pair_id",
+    "newspaper_id",
+    "image_id",
+    "page_number",
+    "page_filename",
+    "image_path_in_zip",
+    "left_block_id",
+    "right_block_id",
+    "left_class_name",
+    "right_class_name",
+    "class_pair",
+    "left_article_id",
+    "right_article_id",
+    "label",
+    "label_reason",
+    "candidate_sources",
+    "num_candidate_sources",
+    "left_confidence",
+    "right_confidence",
+    "min_yolo_confidence",
+    "mean_yolo_confidence",
+    "left_article_id_confidence",
+    "right_article_id_confidence",
+    "min_article_id_confidence",
+    "mean_article_id_confidence",
+    "left_article_ambiguous",
+    "right_article_ambiguous",
+    "left_x1",
+    "left_y1",
+    "left_x2",
+    "left_y2",
+    "right_x1",
+    "right_y1",
+    "right_x2",
+    "right_y2",
+    "left_column_id",
+    "right_column_id",
+    "column_delta",
+    "abs_column_delta",
+    "column_relation",
+    "reading_order_delta",
+    "global_reading_order_delta",
+    "x_overlap_ratio",
+    "y_overlap_ratio",
+    "horizontal_gap_norm",
+    "vertical_gap_norm",
+    "center_dx_norm",
+    "center_dy_norm",
+    "abs_center_dx_norm",
+    "abs_center_dy_norm",
+    "center_distance_norm",
+    "area_ratio",
+    "width_ratio",
+    "height_ratio",
+    "hard_negative",
+]
 
 
 def stable_hash_int(value: str) -> int:
@@ -63,7 +132,16 @@ def infer_columns(page_df: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
 
     intervals = ref[["x1", "x2"]].sort_values(["x1", "x2"]).to_numpy(float)
     median_width = float(np.median(np.maximum(intervals[:, 1] - intervals[:, 0], 1.0)))
-    merge_gap = max(page_width * 0.025, median_width * 0.20)
+    # The merge gap is only for coarse layout-column inference. Keep it wide
+    # enough to absorb ragged text edges, but cap it so tight newspaper gutters
+    # do not collapse neighboring visual columns into one column_id.
+    merge_gap = min(
+        max(
+            page_width * COLUMN_MERGE_GAP_PAGE_WIDTH_RATIO,
+            median_width * COLUMN_MERGE_GAP_MEDIAN_WIDTH_RATIO,
+        ),
+        page_width * COLUMN_MERGE_GAP_MAX_PAGE_WIDTH_RATIO,
+    )
 
     merged: list[list[float]] = []
     for x1, x2 in intervals:
@@ -141,6 +219,92 @@ def gap_between(a1: float, a2: float, b1: float, b2: float) -> float:
     return 0.0
 
 
+def reference_text_width(page: pd.DataFrame) -> float:
+    page_width = float(page["page_width"].iloc[0])
+    ref = page[
+        page["class_name"].isin(TEXTISH_CLASSES)
+        & (page["width"] <= page_width * 0.55)
+        & (page["confidence"] >= 0.30)
+    ]
+    widths = ref["width"] if len(ref) else page["width"]
+    return float(np.median(np.maximum(widths.to_numpy(float), 1.0)))
+
+
+def is_same_column_window(block: pd.Series, other: pd.Series, median_text_width: float) -> bool:
+    x_overlap = interval_overlap_ratio(block.x1, block.x2, other.x1, other.x2)
+    center_dx = abs(float(other.center_x - block.center_x))
+    return bool(
+        x_overlap >= SAME_COLUMN_MIN_X_OVERLAP_RATIO
+        or center_dx <= median_text_width * SAME_COLUMN_MAX_CENTER_DX_MEDIAN_WIDTH_RATIO
+    )
+
+
+def visually_adjacent_after_merged_column(block: pd.Series, other: pd.Series, median_text_width: float) -> bool:
+    horizontal_gap = gap_between(block.x1, block.x2, other.x1, other.x2)
+    return bool(horizontal_gap <= median_text_width * VISUAL_ADJACENT_MAX_HORIZONTAL_GAP_MEDIAN_WIDTH_RATIO)
+
+
+def is_adjacent_column_same_lane(block: pd.Series, other: pd.Series, median_text_width: float) -> bool:
+    x_overlap = interval_overlap_ratio(block.x1, block.x2, other.x1, other.x2)
+    center_dx = abs(float(other.center_x - block.center_x))
+    return bool(
+        x_overlap >= ADJACENT_SAME_LANE_MIN_X_OVERLAP_RATIO
+        and center_dx <= median_text_width * ADJACENT_SAME_LANE_MAX_CENTER_DX_MEDIAN_WIDTH_RATIO
+    )
+
+
+def is_headline_boundary_candidate(headline: pd.Series) -> bool:
+    class_name = str(headline.class_name)
+    if class_name == "Title":
+        return True
+    if class_name != "Section-header":
+        return False
+
+    page_width = max(float(headline.page_width), 1.0)
+    page_height = max(float(headline.page_height), 1.0)
+    height_ratio = float(headline.height) / page_height
+    width_ratio = float(headline.width) / page_width
+    return bool(
+        height_ratio >= SECTION_HEADER_BOUNDARY_MIN_HEIGHT_PAGE_RATIO
+        or (
+            height_ratio >= SECTION_HEADER_BOUNDARY_MIN_WIDE_HEIGHT_PAGE_RATIO
+            and width_ratio >= SECTION_HEADER_BOUNDARY_MIN_WIDTH_PAGE_RATIO
+        )
+    )
+
+
+def crosses_intervening_headline_boundary(page: pd.DataFrame, block: pd.Series, other: pd.Series) -> bool:
+    if str(block.class_name) in HEADLINE_CLASSES or str(other.class_name) in HEADLINE_CLASSES:
+        return False
+
+    upper, lower = (block, other) if float(block.y1) <= float(other.y1) else (other, block)
+    if float(upper.y2) >= float(lower.y1):
+        return False
+
+    headlines = page[
+        page["class_name"].isin(HEADLINE_CLASSES)
+        & page["block_id"].ne(upper.block_id)
+        & page["block_id"].ne(lower.block_id)
+        & (page["confidence"] >= 0.30)
+        & (page["y1"] >= float(upper.y2))
+        & (page["y2"] <= float(lower.y1))
+    ]
+    for headline in headlines.itertuples(index=False):
+        if not is_headline_boundary_candidate(headline):
+            continue
+        overlaps_upper = (
+            interval_overlap_ratio(float(headline.x1), float(headline.x2), float(upper.x1), float(upper.x2))
+            >= HEADLINE_BOUNDARY_MIN_X_OVERLAP_RATIO
+        )
+        overlaps_lower = (
+            interval_overlap_ratio(float(headline.x1), float(headline.x2), float(lower.x1), float(lower.x2))
+            >= HEADLINE_BOUNDARY_MIN_X_OVERLAP_RATIO
+        )
+        if overlaps_upper and overlaps_lower:
+            return True
+    return False
+
+
 def ordered_pair(page_df: pd.DataFrame, i, j):
     left = page_df.loc[i]
     right = page_df.loc[j]
@@ -174,6 +338,7 @@ def build_page_candidate_pairs(
 ):
     pair_sources = defaultdict(set)
     ordered = list(page.sort_values(["column_id", "y1", "x1", "block_id"]).index)
+    median_text_width = reference_text_width(page)
     top_k_by_bucket = {
         "same_column_window": max(int(same_column_top_k), 0),
         "adjacent_column": max(int(adjacent_column_top_k), 0),
@@ -190,7 +355,20 @@ def build_page_candidate_pairs(
             vertical_gap_px = gap_between(block.y1, block.y2, other.y1, other.y2)
             if vertical_gap_px > MAX_CANDIDATE_VERTICAL_GAP_PX:
                 continue
+            if crosses_intervening_headline_boundary(page, block, other):
+                continue
             if column_delta == 0:
+                # column_id is a coarse layout signal. The same-column window is
+                # stricter: candidates must actually align like a reading lane.
+                if is_same_column_window(block, other, median_text_width):
+                    source = "same_column_window"
+                elif visually_adjacent_after_merged_column(block, other, median_text_width):
+                    source = "adjacent_column"
+                elif is_cross_column_headline_continuation_candidate(block, other):
+                    source = "cross_column_headline_continuation"
+                else:
+                    continue
+            elif column_delta == 1 and is_adjacent_column_same_lane(block, other, median_text_width):
                 source = "same_column_window"
             elif column_delta == 1:
                 source = "adjacent_column"
@@ -299,4 +477,4 @@ def build_candidate_pairs(
             cross_column_top_k=cross_column_top_k,
         ).items():
             records.append(pair_feature_record(page, left_idx, right_idx, sources))
-    return blocks_layout.reset_index(drop=True), columns, pd.DataFrame(records)
+    return blocks_layout.reset_index(drop=True), columns, pd.DataFrame(records, columns=CANDIDATE_PAIR_COLUMNS)
