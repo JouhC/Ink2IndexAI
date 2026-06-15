@@ -585,6 +585,7 @@
             <label class="toggle"><span>Pairwise model</span><input id="runPairwise" type="checkbox" checked /></label>
             <label class="toggle"><span>Article grouping</span><input id="runGrouping" type="checkbox" checked /></label>
             <label class="toggle"><span>OCR features</span><input id="runOcr" type="checkbox" checked /></label>
+            <label class="toggle"><span>Cluster validation</span><input id="clusterValidationEnabled" type="checkbox" /></label>
             <label class="toggle"><span>Reuse YOLO cache</span><input id="reuseYoloCache" type="checkbox" checked /></label>
           </div>
           <label>
@@ -852,7 +853,8 @@
           run_pairwise: $("runPairwise").checked,
           run_grouping: $("runGrouping").checked,
           model_version: $("modelVersionInput").value.trim() || "pairwise-v1",
-          run_ocr: true,
+          run_ocr: $("runOcr").checked,
+          cluster_validation_enabled: $("clusterValidationEnabled").checked,
           reuse_yolo_cache: $("reuseYoloCache").checked,
           clustering_method: $("clusteringMethodInput").value,
           leiden_resolution: Number($("leidenResolutionInput").value) || 1.0,

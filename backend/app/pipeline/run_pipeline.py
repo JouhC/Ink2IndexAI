@@ -85,8 +85,6 @@ def run_pipeline(config: PipelineConfig, progress_callback: ProgressCallback | N
     )
     progress("pairwise_features", 68, "Computing pairwise OCR features")
     pair_ocr_features = compute_pairwise_ocr_features(pairs, block_ocr)
-    del block_ocr
-    gc.collect()
 
     pairs_with_ocr = pairs.merge(pair_ocr_features, on="pair_id", how="left")
     for column in ["ocr_cosine_similarity", "text_similarity", "entity_overlap", "shared_keywords"]:
@@ -107,10 +105,18 @@ def run_pipeline(config: PipelineConfig, progress_callback: ProgressCallback | N
     clusters = cluster_blocks(
         blocks,
         pair_predictions,
+        block_ocr=block_ocr,
         method=config.clustering_method,
         leiden_resolution=config.leiden_resolution,
         leiden_seed=config.leiden_seed,
+        cluster_validation_enabled=config.cluster_validation_enabled,
+        strong_pair_threshold=config.strong_pair_threshold,
+        medium_pair_min_probability=config.medium_pair_min_probability,
+        medium_pair_max_probability=config.medium_pair_max_probability,
+        cluster_validation_threshold=config.cluster_validation_threshold,
     )
+    del block_ocr
+    gc.collect()
 
     progress("write_outputs", 96, "Writing visualization outputs")
     return write_outputs(
@@ -138,6 +144,11 @@ def run_pipeline(config: PipelineConfig, progress_callback: ProgressCallback | N
             "clustering_method": config.clustering_method,
             "leiden_resolution": config.leiden_resolution,
             "leiden_seed": config.leiden_seed,
+            "cluster_validation_enabled": config.cluster_validation_enabled,
+            "strong_pair_threshold": config.strong_pair_threshold,
+            "medium_pair_min_probability": config.medium_pair_min_probability,
+            "medium_pair_max_probability": config.medium_pair_max_probability,
+            "cluster_validation_threshold": config.cluster_validation_threshold,
             "yolo_confidence": config.yolo_confidence,
             "yolo_image_size": config.yolo_image_size,
         },
@@ -166,6 +177,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--clustering-method", choices=["union_find", "leiden"], default="union_find")
     parser.add_argument("--leiden-resolution", type=float, default=1.0)
     parser.add_argument("--leiden-seed", type=int, default=13)
+    parser.add_argument("--cluster-validation-enabled", action="store_true", help="Validate medium-confidence pairs before cluster merges.")
+    parser.add_argument("--strong-pair-threshold", type=float, default=0.9)
+    parser.add_argument("--medium-pair-min-probability", type=float, default=0.5)
+    parser.add_argument("--medium-pair-max-probability", type=float, default=0.8999)
+    parser.add_argument("--cluster-validation-threshold", type=float, default=0.9)
     parser.add_argument("--tesseract-lang", default="eng")
     parser.add_argument("--tesseract-psm", default="6")
     return parser

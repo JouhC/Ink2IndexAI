@@ -31,6 +31,11 @@ class PipelineConfig:
     clustering_method: str = "union_find"
     leiden_resolution: float = 1.0
     leiden_seed: int = 13
+    cluster_validation_enabled: bool = False
+    strong_pair_threshold: float = 0.9
+    medium_pair_min_probability: float = 0.5
+    medium_pair_max_probability: float = 0.8999
+    cluster_validation_threshold: float = 0.9
     tesseract_lang: str = "eng"
     tesseract_psm: str = "6"
 
@@ -56,6 +61,11 @@ class PipelineConfig:
             clustering_method=args.clustering_method,
             leiden_resolution=args.leiden_resolution,
             leiden_seed=args.leiden_seed,
+            cluster_validation_enabled=args.cluster_validation_enabled,
+            strong_pair_threshold=args.strong_pair_threshold,
+            medium_pair_min_probability=args.medium_pair_min_probability,
+            medium_pair_max_probability=args.medium_pair_max_probability,
+            cluster_validation_threshold=args.cluster_validation_threshold,
             tesseract_lang=args.tesseract_lang,
             tesseract_psm=args.tesseract_psm,
         )

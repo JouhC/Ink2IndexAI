@@ -95,6 +95,11 @@ class ProcessRequest(BaseModel):
     clustering_method: str = Field(default="union_find", pattern="^(union_find|leiden)$")
     leiden_resolution: float = Field(default=1.0, gt=0.0)
     leiden_seed: int = 13
+    cluster_validation_enabled: bool = False
+    strong_pair_threshold: float = Field(default=0.9, ge=0.0, le=1.0)
+    medium_pair_min_probability: float = Field(default=0.5, ge=0.0, le=1.0)
+    medium_pair_max_probability: float = Field(default=0.8999, ge=0.0, le=1.0)
+    cluster_validation_threshold: float = Field(default=0.9, ge=0.0, le=1.5)
     same_column_top_k: int = Field(default=3, ge=0)
     adjacent_column_top_k: int = Field(default=2, ge=0)
     cross_column_top_k: int = Field(default=1, ge=0)
@@ -295,6 +300,11 @@ def process_document(document_id: str, job_id: str, request: ProcessRequest) -> 
             clustering_method=request.clustering_method,
             leiden_resolution=request.leiden_resolution,
             leiden_seed=request.leiden_seed,
+            cluster_validation_enabled=request.cluster_validation_enabled,
+            strong_pair_threshold=request.strong_pair_threshold,
+            medium_pair_min_probability=request.medium_pair_min_probability,
+            medium_pair_max_probability=request.medium_pair_max_probability,
+            cluster_validation_threshold=request.cluster_validation_threshold,
         )
         def update_progress(stage: str, progress: int, message: str) -> None:
             update_job(
@@ -553,6 +563,9 @@ def get_pairwise_results(document_id: str) -> list[dict[str, Any]]:
                 "prediction": bool(int(float(row["prediction"]))),
                 "probability": coerce_number(row["probability_same_article"]),
                 "model_version": metadata.get("model_version", "pairwise-v1"),
+                "cluster_validation_status": row.get("cluster_validation_status"),
+                "cluster_validation_score": coerce_number(row.get("cluster_validation_score")),
+                "cluster_validation_reason": row.get("cluster_validation_reason"),
             }
         )
     return results

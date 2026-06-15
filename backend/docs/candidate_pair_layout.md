@@ -74,3 +74,56 @@ more pairs; raising it makes the guard more permissive.
 Lowering the section-header boundary size ratios makes smaller `Section-header`
 detections act as article boundaries; raising them limits the boundary guard to
 larger display-style headers.
+
+## Cluster-to-Block Validation
+
+The pairwise model can produce useful near-miss edges below the production
+threshold. For example, a headline may score in the `0.5` to `0.8999` band
+against one block in an article even though the article cluster as a whole
+clearly shares its topic. Blindly unioning those medium-confidence pairs is not
+safe, because a single bridge edge can merge two separate stories.
+
+When `cluster_validation_enabled` is true and `clustering_method` is
+`union_find`, clustering uses a conservative two-pass process:
+
+- first union strong pairs with probability at least `strong_pair_threshold`
+  (`0.9` by default)
+- then evaluate medium pairs between `medium_pair_min_probability` and
+  `medium_pair_max_probability` (`0.5` to `0.8999` by default)
+- only allow a medium pair to attach a singleton block to an existing cluster
+  when the cluster-to-block validation score reaches
+  `cluster_validation_threshold` (`0.9` by default)
+
+The validation score starts with the pair probability, then adjusts for layout,
+class compatibility, OCR/text similarity, and topic-token overlap between the
+singleton block and the target cluster. Headline-like blocks (`Title` and
+`Section-header`) receive a small bonus only when their OCR tokens overlap the
+cluster topic. Cross-column and picture-related pairs are penalized.
+
+This deliberately does not merge two existing multi-block clusters through a
+medium pair unless one cluster is a small same-column trailing appendix. That
+append path is intentionally narrow: the bridge pair must be at least `0.85`,
+come from a same-column window, have strong horizontal overlap, have a small
+vertical gap, and be close in reading order. It exists for cases such as a
+short footer/list/sidebar cluster that belongs to the article immediately
+above it. The validator still does not connect two singleton blocks or make
+broad article-to-article merge decisions.
+
+When enabled, `pair_predictions.csv` includes audit columns:
+
+- `cluster_validation_status`
+- `cluster_validation_score`
+- `cluster_validation_reason`
+
+Expected statuses include:
+
+- `strong_accept`
+- `validated_accept`
+- `validated_append_cluster_accept`
+- `validated_reject`
+- `rejected_not_singleton_to_cluster`
+- `outside_medium_band`
+- `already_connected`
+
+To keep the current production behavior, leave `cluster_validation_enabled`
+false.

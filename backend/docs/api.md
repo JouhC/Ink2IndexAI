@@ -74,7 +74,12 @@ Request body:
   "model_version": "pairwise-v1",
   "run_ocr": false,
   "yolo_confidence": 0.25,
-  "yolo_image_size": null
+  "yolo_image_size": null,
+  "cluster_validation_enabled": false,
+  "strong_pair_threshold": 0.9,
+  "medium_pair_min_probability": 0.5,
+  "medium_pair_max_probability": 0.8999,
+  "cluster_validation_threshold": 0.9
 }
 ```
 
@@ -103,6 +108,9 @@ Lists candidate block pairs and their feature values.
 ### `GET /documents/{document_id}/pairwise-results`
 
 Lists pairwise model predictions for candidate block pairs.
+When cluster-to-block validation is enabled, each row also includes
+`cluster_validation_status`, `cluster_validation_score`, and
+`cluster_validation_reason`.
 
 ### `GET /documents/{document_id}/articles`
 
