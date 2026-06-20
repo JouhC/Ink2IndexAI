@@ -503,9 +503,9 @@ def cluster_blocks(
     leiden_resolution: float = 1.0,
     leiden_seed: int = 13,
     cluster_validation_enabled: bool = False,
-    strong_pair_threshold: float = 0.9,
+    strong_pair_threshold: float = 0.92,
     medium_pair_min_probability: float = 0.5,
-    medium_pair_max_probability: float = 0.8999,
+    medium_pair_max_probability: float = 0.9199,
     cluster_validation_threshold: float = 0.9,
 ) -> pd.DataFrame:
     if cluster_validation_enabled:

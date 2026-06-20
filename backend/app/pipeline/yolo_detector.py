@@ -6,6 +6,62 @@ import pandas as pd
 
 from .images import PageImage
 
+DEDUP_IOU_THRESHOLD = 0.85
+DEDUP_CONTAINMENT_THRESHOLD = 0.95
+
+
+def box_area(row) -> float:
+    return max(float(row.x2) - float(row.x1), 0.0) * max(float(row.y2) - float(row.y1), 0.0)
+
+
+def box_intersection_area(left, right) -> float:
+    width = max(0.0, min(float(left.x2), float(right.x2)) - max(float(left.x1), float(right.x1)))
+    height = max(0.0, min(float(left.y2), float(right.y2)) - max(float(left.y1), float(right.y1)))
+    return width * height
+
+
+def is_duplicate_detection(candidate, kept) -> bool:
+    intersection = box_intersection_area(candidate, kept)
+    if intersection <= 0:
+        return False
+
+    candidate_area = max(box_area(candidate), 1e-9)
+    kept_area = max(box_area(kept), 1e-9)
+    union = candidate_area + kept_area - intersection
+    iou = intersection / max(union, 1e-9)
+    candidate_containment = intersection / candidate_area
+    kept_containment = intersection / kept_area
+
+    return bool(
+        iou >= DEDUP_IOU_THRESHOLD
+        or candidate_containment >= DEDUP_CONTAINMENT_THRESHOLD
+        or kept_containment >= DEDUP_CONTAINMENT_THRESHOLD
+    )
+
+
+def suppress_duplicate_blocks(blocks: pd.DataFrame) -> pd.DataFrame:
+    if blocks.empty:
+        return blocks
+
+    required_columns = {"newspaper_id", "image_id", "page_filename", "class_name", "confidence", "x1", "y1", "x2", "y2"}
+    missing_columns = required_columns - set(blocks.columns)
+    if missing_columns:
+        raise ValueError(f"Cannot suppress duplicate blocks; missing columns: {sorted(missing_columns)}")
+
+    keep_indices = []
+    page_keys = ["newspaper_id", "image_id", "page_filename"]
+    for _, page in blocks.groupby(page_keys, sort=False):
+        for _, same_class in page.groupby("class_name", sort=False):
+            ordered = same_class.sort_values(["confidence", "width", "height"], ascending=[False, False, False])
+            kept_rows = []
+            for row in ordered.itertuples():
+                if any(is_duplicate_detection(row, kept) for kept in kept_rows):
+                    continue
+                kept_rows.append(row)
+                keep_indices.append(row.Index)
+
+    return blocks.loc[sorted(keep_indices)].copy()
+
 
 def detect_blocks(
     pages: list[PageImage],
@@ -71,5 +127,4 @@ def detect_blocks(
                     }
                 )
 
-    return pd.DataFrame(records)
-
+    return suppress_duplicate_blocks(pd.DataFrame(records))

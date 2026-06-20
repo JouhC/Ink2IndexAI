@@ -76,9 +76,9 @@ Request body:
   "yolo_confidence": 0.25,
   "yolo_image_size": null,
   "cluster_validation_enabled": false,
-  "strong_pair_threshold": 0.9,
+  "strong_pair_threshold": 0.92,
   "medium_pair_min_probability": 0.5,
-  "medium_pair_max_probability": 0.8999,
+  "medium_pair_max_probability": 0.9199,
   "cluster_validation_threshold": 0.9
 }
 ```

@@ -96,9 +96,9 @@ class ProcessRequest(BaseModel):
     leiden_resolution: float = Field(default=1.0, gt=0.0)
     leiden_seed: int = 13
     cluster_validation_enabled: bool = False
-    strong_pair_threshold: float = Field(default=0.9, ge=0.0, le=1.0)
+    strong_pair_threshold: float = Field(default=0.92, ge=0.0, le=1.0)
     medium_pair_min_probability: float = Field(default=0.5, ge=0.0, le=1.0)
-    medium_pair_max_probability: float = Field(default=0.8999, ge=0.0, le=1.0)
+    medium_pair_max_probability: float = Field(default=0.9199, ge=0.0, le=1.0)
     cluster_validation_threshold: float = Field(default=0.9, ge=0.0, le=1.5)
     same_column_top_k: int = Field(default=3, ge=0)
     adjacent_column_top_k: int = Field(default=2, ge=0)

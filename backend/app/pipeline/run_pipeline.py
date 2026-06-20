@@ -14,7 +14,7 @@ from .config import PipelineConfig
 from .images import explode_tif_pages, pages_to_frame
 from .ocr_features import build_block_ocr, compute_pairwise_ocr_features
 from .storage import write_outputs
-from .yolo_detector import detect_blocks
+from .yolo_detector import detect_blocks, suppress_duplicate_blocks
 
 ProgressCallback = Callable[[str, int, str], None]
 
@@ -38,7 +38,7 @@ def load_cached_blocks(cached_blocks_path: Path, pages_df: pd.DataFrame, newspap
         blocks.loc[mask, "page_width"] = page["page_width"]
         blocks.loc[mask, "page_height"] = page["page_height"]
 
-    return blocks.drop(columns=["_block_index"])
+    return suppress_duplicate_blocks(blocks.drop(columns=["_block_index"]))
 
 
 def run_pipeline(config: PipelineConfig, progress_callback: ProgressCallback | None = None) -> dict:
@@ -178,9 +178,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--leiden-resolution", type=float, default=1.0)
     parser.add_argument("--leiden-seed", type=int, default=13)
     parser.add_argument("--cluster-validation-enabled", action="store_true", help="Validate medium-confidence pairs before cluster merges.")
-    parser.add_argument("--strong-pair-threshold", type=float, default=0.9)
+    parser.add_argument("--strong-pair-threshold", type=float, default=0.92)
     parser.add_argument("--medium-pair-min-probability", type=float, default=0.5)
-    parser.add_argument("--medium-pair-max-probability", type=float, default=0.8999)
+    parser.add_argument("--medium-pair-max-probability", type=float, default=0.9199)
     parser.add_argument("--cluster-validation-threshold", type=float, default=0.9)
     parser.add_argument("--tesseract-lang", default="eng")
     parser.add_argument("--tesseract-psm", default="6")

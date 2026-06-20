@@ -78,7 +78,7 @@ larger display-style headers.
 ## Cluster-to-Block Validation
 
 The pairwise model can produce useful near-miss edges below the production
-threshold. For example, a headline may score in the `0.5` to `0.8999` band
+threshold. For example, a headline may score in the `0.5` to `0.9199` band
 against one block in an article even though the article cluster as a whole
 clearly shares its topic. Blindly unioning those medium-confidence pairs is not
 safe, because a single bridge edge can merge two separate stories.
@@ -87,9 +87,9 @@ When `cluster_validation_enabled` is true and `clustering_method` is
 `union_find`, clustering uses a conservative two-pass process:
 
 - first union strong pairs with probability at least `strong_pair_threshold`
-  (`0.9` by default)
+  (`0.92` by default)
 - then evaluate medium pairs between `medium_pair_min_probability` and
-  `medium_pair_max_probability` (`0.5` to `0.8999` by default)
+  `medium_pair_max_probability` (`0.5` to `0.9199` by default)
 - only allow a medium pair to attach a singleton block to an existing cluster
   when the cluster-to-block validation score reaches
   `cluster_validation_threshold` (`0.9` by default)
