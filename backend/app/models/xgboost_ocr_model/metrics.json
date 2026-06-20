@@ -1,0 +1,72 @@
+{
+  "ocr_source": "pairwise features: new_datasets/pre-processed/pairwise_classification/candidate_block_pairs_ocr_features.csv",
+  "ocr_features": [
+    "ocr_cosine_similarity",
+    "text_similarity",
+    "entity_overlap",
+    "shared_keywords"
+  ],
+  "best_iteration": 799,
+  "best_score": 0.9609424281022744,
+  "best_threshold": 0.34955883026123047,
+  "train": {
+    "rows": 134927,
+    "threshold": 0.34955883026123047,
+    "accuracy": 0.9165326435776383,
+    "precision": 0.8889774053979809,
+    "recall": 0.9531818382645322,
+    "f1": 0.9199607692635708,
+    "roc_auc": 0.9794859664011016,
+    "average_precision": 0.9807268748039181,
+    "confusion_matrix": [
+      [
+        58943,
+        8083
+      ],
+      [
+        3179,
+        64722
+      ]
+    ]
+  },
+  "val": {
+    "rows": 22255,
+    "threshold": 0.34955883026123047,
+    "accuracy": 0.8810155021343519,
+    "precision": 0.8643475366178429,
+    "recall": 0.9107330761136443,
+    "f1": 0.886934244235696,
+    "roc_auc": 0.9546201592432116,
+    "average_precision": 0.9609441503192716,
+    "confusion_matrix": [
+      [
+        9221,
+        1630
+      ],
+      [
+        1018,
+        10386
+      ]
+    ]
+  },
+  "test": {
+    "rows": 25252,
+    "threshold": 0.34955883026123047,
+    "accuracy": 0.8659512117852052,
+    "precision": 0.8274829095936708,
+    "recall": 0.9043821356615178,
+    "f1": 0.8642252617223537,
+    "roc_auc": 0.9471959222705638,
+    "average_precision": 0.9469083619184228,
+    "confusion_matrix": [
+      [
+        11094,
+        2246
+      ],
+      [
+        1139,
+        10773
+      ]
+    ]
+  }
+}

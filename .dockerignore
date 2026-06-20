@@ -1,0 +1,16 @@
+.git
+.agents
+.codex
+
+backend/.venv
+backend/__pycache__
+backend/.pytest_cache
+backend/app/**/__pycache__
+backend/app/data
+
+frontend/node_modules
+
+*.pyc
+*.pyo
+*.tif
+*.tiff
